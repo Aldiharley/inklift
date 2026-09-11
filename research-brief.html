@@ -1,0 +1,807 @@
+<title>Ink Extraction Blueprint</title>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;1,8..60,400&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+:root{
+  --paper:#F6F7F9; --surface:#FFFFFF; --surface-2:#EDEFF3;
+  --ink:#161A21; --ink-2:#4E5766; --ink-3:#7A8496;
+  --rule:#D9DEE6; --rule-strong:#B9C1CE;
+  --accent:#2547C4; --accent-soft:#E8EDFB; --accent-ink:#1B36A0;
+  --good:#16704F; --good-soft:#E2F1EB;
+  --warn:#8F5E10; --warn-soft:#F7EEDD;
+  --crit:#A62B36; --crit-soft:#F8E6E7;
+  --check-a:#E4E8EE; --check-b:#F6F7F9;
+  --shadow:0 1px 2px rgba(22,26,33,.05), 0 8px 24px -12px rgba(22,26,33,.18);
+  --maxw:73rem; --measure:66ch;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --paper:#101319; --surface:#171B23; --surface-2:#1F242E;
+    --ink:#E4E8EF; --ink-2:#A3ACBC; --ink-3:#737D8E;
+    --rule:#2B313D; --rule-strong:#3C4453;
+    --accent:#8AA4FF; --accent-soft:#1B2340; --accent-ink:#AFC0FF;
+    --good:#4FBF97; --good-soft:#122A22;
+    --warn:#D9A24E; --warn-soft:#2C2416;
+    --crit:#E2707A; --crit-soft:#2E1A1D;
+    --check-a:#232935; --check-b:#171B23;
+    --shadow:0 1px 2px rgba(0,0,0,.4), 0 8px 24px -12px rgba(0,0,0,.7);
+  }
+}
+:root[data-theme="dark"]{
+  --paper:#101319; --surface:#171B23; --surface-2:#1F242E;
+  --ink:#E4E8EF; --ink-2:#A3ACBC; --ink-3:#737D8E;
+  --rule:#2B313D; --rule-strong:#3C4453;
+  --accent:#8AA4FF; --accent-soft:#1B2340; --accent-ink:#AFC0FF;
+  --good:#4FBF97; --good-soft:#122A22;
+  --warn:#D9A24E; --warn-soft:#2C2416;
+  --crit:#E2707A; --crit-soft:#2E1A1D;
+  --check-a:#232935; --check-b:#171B23;
+  --shadow:0 1px 2px rgba(0,0,0,.4), 0 8px 24px -12px rgba(0,0,0,.7);
+}
+*{box-sizing:border-box}
+body{
+  background:var(--paper); color:var(--ink);
+  font-family:"Source Serif 4",Georgia,"Times New Roman",serif;
+  font-size:17px; line-height:1.62;
+  -webkit-font-smoothing:antialiased;
+}
+.wrap{max-width:var(--maxw); margin:0 auto; padding-inline:20px; padding-block:0 96px}
+h1,h2,h3,h4,.ui{font-family:Archivo,"Helvetica Neue",Arial,sans-serif}
+h1,h2,h3{text-wrap:balance; margin:0}
+p{margin:0}
+a{color:var(--accent-ink); text-decoration-thickness:1px; text-underline-offset:2px}
+a:focus-visible,button:focus-visible{outline:2px solid var(--accent); outline-offset:3px; border-radius:2px}
+code,.mono{font-family:"IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace; font-size:.87em}
+
+/* ---- masthead ---- */
+.masthead{border-bottom:2px solid var(--ink); padding-block:44px 22px; margin-bottom:40px}
+.eyebrow{font-family:Archivo,sans-serif; font-size:11.5px; font-weight:600; letter-spacing:.14em;
+  text-transform:uppercase; color:var(--ink-3); display:flex; flex-wrap:wrap; gap:14px; margin-bottom:20px}
+.eyebrow span{white-space:nowrap}
+h1{font-size:clamp(2.4rem,6.2vw,4.1rem); font-weight:700; letter-spacing:-.025em; line-height:1.02}
+.standfirst{margin-top:20px; max-width:var(--measure); font-size:1.19rem; color:var(--ink-2); line-height:1.55}
+
+/* ---- verdict ---- */
+.verdict{margin-top:34px; display:grid; grid-template-columns:repeat(auto-fit,minmax(235px,1fr)); gap:1px;
+  background:var(--rule); border:1px solid var(--rule); border-radius:3px; overflow:hidden}
+.verdict > div{background:var(--surface); padding:20px 22px 22px}
+.verdict dt{font-family:Archivo,sans-serif; font-size:10.5px; font-weight:600; letter-spacing:.12em;
+  text-transform:uppercase; color:var(--ink-3); margin-bottom:9px}
+.verdict dd{margin:0; font-size:1.02rem; line-height:1.45}
+.verdict strong{font-weight:600}
+
+/* ---- sections ---- */
+section{margin-top:64px; scroll-margin-top:24px}
+.sec-head{display:flex; align-items:baseline; gap:14px; border-bottom:1px solid var(--rule);
+  padding-bottom:11px; margin-bottom:26px}
+.sec-num{font-family:"IBM Plex Mono",monospace; font-size:12px; font-weight:500; color:var(--accent);
+  letter-spacing:.05em; flex:none; padding-top:4px}
+h2{font-size:clamp(1.42rem,2.9vw,1.95rem); font-weight:600; letter-spacing:-.017em; line-height:1.14}
+h3{font-size:1.1rem; font-weight:600; letter-spacing:-.008em; margin-top:34px; margin-bottom:11px}
+.prose{max-width:var(--measure); display:flex; flex-direction:column; gap:17px}
+.prose.wide{max-width:78ch}
+
+/* ---- tables ---- */
+.tscroll{overflow-x:auto; margin-top:22px; border:1px solid var(--rule); border-radius:3px; background:var(--surface)}
+table{border-collapse:collapse; width:100%; min-width:640px; font-size:14.5px;
+  font-family:Archivo,sans-serif; font-variant-numeric:tabular-nums}
+th{text-align:left; font-weight:600; font-size:10.5px; letter-spacing:.1em; text-transform:uppercase;
+  color:var(--ink-3); padding:12px 14px; border-bottom:1px solid var(--rule-strong); white-space:nowrap; background:var(--surface-2)}
+td{padding:11px 14px; border-bottom:1px solid var(--rule); vertical-align:top; line-height:1.42}
+tbody tr:last-child td{border-bottom:0}
+td.num{text-align:right; font-family:"IBM Plex Mono",monospace; font-size:13px}
+.repo{font-family:"IBM Plex Mono",monospace; font-size:12.5px; white-space:nowrap}
+.hl td{background:var(--accent-soft)}
+.dim{color:var(--ink-3)}
+caption{caption-side:bottom; text-align:left; padding:11px 14px; font-family:Archivo,sans-serif;
+  font-size:12.5px; color:var(--ink-3); line-height:1.45; border-top:1px solid var(--rule)}
+
+/* ---- pills ---- */
+.pill{display:inline-block; font-family:Archivo,sans-serif; font-size:10.5px; font-weight:600;
+  letter-spacing:.06em; text-transform:uppercase; padding:2px 7px; border-radius:2px; white-space:nowrap}
+.p-good{background:var(--good-soft); color:var(--good)}
+.p-warn{background:var(--warn-soft); color:var(--warn)}
+.p-crit{background:var(--crit-soft); color:var(--crit)}
+.p-flat{background:var(--surface-2); color:var(--ink-3)}
+
+/* ---- callout ---- */
+.callout{margin-top:26px; max-width:78ch; border-left:3px solid var(--crit); background:var(--crit-soft);
+  padding:17px 20px; border-radius:0 3px 3px 0; display:flex; flex-direction:column; gap:10px}
+.callout.warn{border-left-color:var(--warn); background:var(--warn-soft)}
+.callout.note{border-left-color:var(--accent); background:var(--accent-soft)}
+.callout h4{font-size:13px; font-weight:600; letter-spacing:.02em; margin:0; color:inherit}
+.callout p{font-size:15.5px; line-height:1.55}
+
+/* ---- alpha demo ---- */
+.alpha-demo{margin-top:26px; display:grid; grid-template-columns:repeat(auto-fit,minmax(168px,1fr)); gap:14px; max-width:78ch}
+.swatch{border:1px solid var(--rule); border-radius:3px; overflow:hidden; background:var(--surface)}
+.swatch .canvasbox{height:96px; display:grid; place-items:center;
+  background-image:
+    linear-gradient(45deg,var(--check-a) 25%,transparent 25%,transparent 75%,var(--check-a) 75%),
+    linear-gradient(45deg,var(--check-a) 25%,transparent 25%,transparent 75%,var(--check-a) 75%);
+  background-size:16px 16px; background-position:0 0,8px 8px; background-color:var(--check-b)}
+.swatch svg{display:block}
+.swatch figcaption{font-family:Archivo,sans-serif; font-size:11.5px; line-height:1.4; color:var(--ink-2);
+  padding:10px 12px; border-top:1px solid var(--rule)}
+.swatch figcaption b{display:block; color:var(--ink); font-weight:600; font-size:12px; margin-bottom:2px}
+
+/* ---- formula ---- */
+.formula{margin-top:22px; max-width:78ch; background:var(--surface); border:1px solid var(--rule);
+  border-radius:3px; padding:18px 20px; font-family:"IBM Plex Mono",monospace; font-size:13.5px;
+  line-height:2; overflow-x:auto}
+.formula .cm{color:var(--ink-3)}
+.formula .kw{color:var(--accent-ink)}
+
+/* ---- pipeline ---- */
+.pipe{margin-top:24px; display:flex; flex-direction:column; gap:1px; background:var(--rule);
+  border:1px solid var(--rule); border-radius:3px; overflow:hidden; max-width:78ch}
+.stage{background:var(--surface); display:grid; grid-template-columns:2.9rem 1fr; gap:16px; padding:16px 18px 17px}
+.stage .idx{font-family:"IBM Plex Mono",monospace; font-size:12px; color:var(--accent); padding-top:3px}
+.stage h4{font-family:Archivo,sans-serif; font-size:14.5px; font-weight:600; margin:0 0 5px}
+.stage p{font-size:14.5px; line-height:1.5; color:var(--ink-2)}
+.stage .tech{margin-top:7px; font-family:"IBM Plex Mono",monospace; font-size:11.5px; color:var(--ink-3)}
+.stage.opt{background:var(--surface-2)}
+.stage.opt h4::after{content:"optional"; font-family:Archivo,sans-serif; font-size:9.5px; font-weight:600;
+  letter-spacing:.1em; text-transform:uppercase; color:var(--ink-3); margin-left:9px; vertical-align:1px}
+
+/* ---- lists ---- */
+ul.tight{margin:0; padding-left:1.15em; display:flex; flex-direction:column; gap:9px}
+ul.tight li{padding-left:.1em}
+ul.tight li::marker{color:var(--ink-3)}
+dl.kv{margin:22px 0 0; display:grid; gap:1px; background:var(--rule); border:1px solid var(--rule);
+  border-radius:3px; overflow:hidden; max-width:78ch}
+dl.kv > div{background:var(--surface); padding:14px 18px; display:grid; grid-template-columns:9.5rem 1fr; gap:16px}
+dl.kv dt{font-family:Archivo,sans-serif; font-size:12.5px; font-weight:600; color:var(--ink-2); padding-top:2px}
+dl.kv dd{margin:0; font-size:15px; line-height:1.5}
+
+/* ---- roadmap ---- */
+.phases{margin-top:24px; display:grid; grid-template-columns:repeat(auto-fit,minmax(210px,1fr)); gap:14px}
+.phase{border:1px solid var(--rule); border-top:3px solid var(--accent); border-radius:0 0 3px 3px;
+  background:var(--surface); padding:17px 18px 19px; display:flex; flex-direction:column; gap:9px}
+.phase:nth-child(2){border-top-color:var(--good)}
+.phase:nth-child(3){border-top-color:var(--warn)}
+.phase:nth-child(4){border-top-color:var(--ink-3)}
+.phase .ph{font-family:"IBM Plex Mono",monospace; font-size:11px; color:var(--ink-3); letter-spacing:.06em}
+.phase h4{font-family:Archivo,sans-serif; font-size:15px; font-weight:600; margin:0}
+.phase p{font-size:14px; line-height:1.5; color:var(--ink-2)}
+.phase .out{font-family:Archivo,sans-serif; font-size:11.5px; color:var(--ink-3); border-top:1px solid var(--rule); padding-top:9px; margin-top:auto}
+
+/* ---- sources ---- */
+.sources{margin-top:26px; columns:2; column-gap:38px; max-width:78ch; font-size:14px; line-height:1.5}
+.sources p{break-inside:avoid; margin-bottom:11px}
+.sources a{font-family:"IBM Plex Mono",monospace; font-size:12.5px; word-break:break-word}
+
+@media (max-width:640px){
+  body{font-size:16.5px}
+  .sources{columns:1}
+  dl.kv > div{grid-template-columns:1fr; gap:5px}
+  .stage{grid-template-columns:2.1rem 1fr; gap:10px}
+}
+@media (prefers-reduced-motion:reduce){*{animation:none!important; transition:none!important}}
+</style>
+
+<div class="wrap">
+
+<header class="masthead">
+  <div class="eyebrow">
+    <span>Research brief</span><span>11 September 2026</span><span>Build vs. reuse · models · architecture</span>
+  </div>
+  <h1>Ink Extraction Blueprint</h1>
+  <p class="standfirst">Pulling clean handwriting off a messy, low-resolution photo and onto a transparent
+  background. What already exists, how good it actually is, and what you would have to build yourself
+  to ship something lightweight, cross-platform and reliable.</p>
+
+  <dl class="verdict">
+    <div>
+      <dt>Existing repo to fork?</dt>
+      <dd><strong>Partly.</strong> The hard vision problem is solved and MIT-licensed. The part you want — soft alpha, RGBA output, an app around it — does not exist.</dd>
+    </div>
+    <div>
+      <dt>Best starting point</dt>
+      <dd><strong>DocRes</strong> (CVPR&nbsp;2024, MIT, 654★) for the model, <strong>DocDiff</strong> and <strong>NAF-DPM</strong> as teachers, not as shipped inference.</dd>
+    </div>
+    <div>
+      <dt>Recommended stack</dt>
+      <dd><strong>Python core + ONNX</strong>, wrapped in <strong>Tauri&nbsp;2</strong> with the <code>ort</code> crate. One model file under 10&nbsp;MB, no Python on the user's machine.</dd>
+    </div>
+    <div>
+      <dt>Off-the-shelf image model?</dt>
+      <dd><strong>No.</strong> Nano Banana, Seedream and friends redraw strokes rather than extract them, and most cannot emit alpha. But pretrained <em>specialist</em> weights need no fine-tuning either — see §05.</dd>
+    </div>
+    <div>
+      <dt>Biggest risk</dt>
+      <dd><strong>Generalization, not accuracy.</strong> Published models scoring 92 on familiar data collapse to 56–66 on unseen degradation.</dd>
+    </div>
+  </dl>
+</header>
+
+<section>
+  <div class="sec-head"><span class="sec-num">01</span><h2>Why searching for "handwriting extraction" finds nothing</h2></div>
+  <div class="prose">
+    <p>The field you want is not called handwriting extraction. On GitHub that phrase returns a top result
+    with <strong>three stars</strong>, and every well-populated repo under it is an OCR project — image in,
+    <em>text</em> out. That is a different product.</p>
+    <p>The academic name is <strong>document image binarization</strong>, benchmarked by the DIBCO and
+    H-DIBCO competitions from 2009 to 2019, and the broader umbrella is <strong>document image
+    restoration</strong>. Once you search under those terms you find twenty years of work on exactly your
+    problem: faint ink, uneven lighting, bleed-through from the reverse side, stains, camera noise, low
+    contrast. That literature is the asset here.</p>
+    <p>The single most useful page on the internet for this project is
+    <a href="https://github.com/ZZZHANG-jx/Recommendations-Document-Image-Processing">ZZZHANG-jx/Recommendations-Document-Image-Processing</a>
+    (403★, still updated) — a curated index of every paper, dataset and code release across dewarping,
+    deshadowing, deblurring, binarization and handwritten-text erasure. Start there, not on a search engine.</p>
+  </div>
+</section>
+
+<section>
+  <div class="sec-head"><span class="sec-num">02</span><h2>What already exists</h2></div>
+  <div class="prose">
+    <p>Verified live: stars, licenses and last-push dates pulled from the GitHub API today. License matters
+    more than stars here — you cannot ship weights you have no right to redistribute.</p>
+  </div>
+
+  <div class="tscroll">
+  <table>
+    <thead><tr>
+      <th>Repository</th><th class="num">★</th><th>License</th><th>Last push</th><th>What you get</th><th>Verdict</th>
+    </tr></thead>
+    <tbody>
+      <tr class="hl">
+        <td class="repo">ZZZHANG-jx/DocRes</td><td class="num">654</td><td>MIT</td><td>2025-08</td>
+        <td>One generalist model covering dewarping, deshadowing, appearance, deblurring, binarization and end-to-end. CVPR 2024.</td>
+        <td><span class="pill p-good">Fork this</span></td>
+      </tr>
+      <tr>
+        <td class="repo">Royalvice/DocDiff</td><td class="num">356</td><td>MIT</td><td>2024-08</td>
+        <td>Residual diffusion. Binarization, deblur, watermark and seal removal. Trains at 128×128 on 12&nbsp;GB.</td>
+        <td><span class="pill p-warn">Teacher only</span></td>
+      </tr>
+      <tr>
+        <td class="repo">dali92002/DocEnTR</td><td class="num">191</td><td><span class="pill p-crit">unclear</span></td><td>2025-01</td>
+        <td>ViT autoencoder binarizer, ICPR 2022. Strong reference implementation.</td>
+        <td><span class="pill p-warn">Read, don't ship</span></td>
+      </tr>
+      <tr>
+        <td class="repo">masyagin1998/robin</td><td class="num">185</td><td>MIT</td><td>2024-08</td>
+        <td>Plain U-Net binarization. Simple, readable, practical — good code to learn the shape of the task.</td>
+        <td><span class="pill p-good">Baseline</span></td>
+      </tr>
+      <tr>
+        <td class="repo">qurator-spk/sbb_binarization</td><td class="num">80</td><td>Apache-2.0</td><td>2024-10</td>
+        <td>Production binarizer used by the Berlin State Library on real archive scans.</td>
+        <td><span class="pill p-good">Proven</span></td>
+      </tr>
+      <tr>
+        <td class="repo">ispamm/NAF-DPM</td><td class="num">54</td><td>MIT</td><td>2024-08</td>
+        <td>Diffusion enhancement. Best published DIBCO-2019 score before 2025.</td>
+        <td><span class="pill p-warn">Teacher only</span></td>
+      </tr>
+      <tr>
+        <td class="repo">RichSu95/Document_Binarization_Collection</td><td class="num">30</td><td><span class="pill p-crit">none</span></td><td>2022-12</td>
+        <td>Five published binarizers, their weights, and one fair evaluation harness under a single protocol.</td>
+        <td><span class="pill p-good">Bench harness</span></td>
+      </tr>
+      <tr>
+        <td class="repo">Royalvice/GDB</td><td class="num">16</td><td><span class="pill p-crit">none</span></td><td>2023-11</td>
+        <td>Gated convolutions. Notably robust on the hardest benchmark year.</td>
+        <td><span class="pill p-warn">Method, not code</span></td>
+      </tr>
+      <tr><td colspan="6" style="background:var(--surface-2); padding:8px 14px; font-size:11px; letter-spacing:.1em; text-transform:uppercase; color:var(--ink-3); font-weight:600">Adjacent — for the parts binarization doesn't cover</td></tr>
+      <tr>
+        <td class="repo">visioncortex/vtracer</td><td class="num">6,973</td><td>MIT</td><td>2026-09</td>
+        <td>Rust raster→vector. Drops straight into a Tauri backend.</td>
+        <td><span class="pill p-good">Low-res answer</span></td>
+      </tr>
+      <tr>
+        <td class="repo">plemeri/transparent-background</td><td class="num">1,291</td><td>MIT</td><td>2026-07</td>
+        <td>InSPyReNet matting. Wrong model for ink, but the right RGBA plumbing to copy.</td>
+        <td><span class="pill p-flat">Pattern</span></td>
+      </tr>
+      <tr>
+        <td class="repo">danilo-znamerovszkij/draw-your-font</td><td class="num">767</td><td>MIT</td><td>2026-08</td>
+        <td>Photo → adaptive threshold → blob detect → potrace → TTF. The closest shipping consumer pipeline to yours.</td>
+        <td><span class="pill p-good">Study closely</span></td>
+      </tr>
+      <tr>
+        <td class="repo">WillNilges/inkpath</td><td class="num">~50</td><td>—</td><td>2021</td>
+        <td>Whiteboard photo → Otsu → skeletonize → contours → Xournal++ strokes. Same instinct, classical only.</td>
+        <td><span class="pill p-flat">Prior art</span></td>
+      </tr>
+    </tbody>
+    <caption>Figures retrieved from the GitHub API, 11 September 2026. "Teacher only" means the model is
+    too slow to ship as live inference but excellent for generating training labels offline.</caption>
+  </table>
+  </div>
+
+  <div class="callout note">
+    <h4>The honest summary</h4>
+    <p>Nobody has published the thing you described. Every piece is available under a permissive licence;
+    what is missing is the assembly — soft alpha, colour recovery, a capture UI, and a package that runs
+    on three desktop platforms without a Python install. That assembly is your product, and it is a
+    smaller job than it looks.</p>
+  </div>
+</section>
+
+<section>
+  <div class="sec-head"><span class="sec-num">03</span><h2>How good are these models, really</h2></div>
+  <div class="prose">
+    <p>F-measure on the DIBCO benchmark series, higher is better. The left column averages nine or ten
+    competition years; the right column is DIBCO&nbsp;2019 alone, held out, which is the closest public proxy
+    for "an image the model has never seen anything like".</p>
+  </div>
+
+  <div class="tscroll">
+  <table>
+    <thead><tr><th>Method</th><th>Year</th><th class="num">Avg FM</th><th class="num">DIBCO&nbsp;2019 FM</th><th class="num">Drop</th></tr></thead>
+    <tbody>
+      <tr><td>Otsu <span class="dim">— global threshold</span></td><td class="dim">1979</td><td class="num">77.3</td><td class="num">63.9</td><td class="num dim">−13.4</td></tr>
+      <tr><td>Sauvola <span class="dim">— local threshold</span></td><td class="dim">2000</td><td class="num">78.1</td><td class="num">63.8</td><td class="num dim">−14.3</td></tr>
+      <tr><td>DeepOtsu</td><td class="dim">2019</td><td class="num">88.6</td><td class="num">60.8</td><td class="num" style="color:var(--crit)">−27.8</td></tr>
+      <tr><td>DE-GAN</td><td class="dim">2020</td><td class="num">89.6</td><td class="num">56.0</td><td class="num" style="color:var(--crit)">−33.6</td></tr>
+      <tr><td>DocEnTr</td><td class="dim">2022</td><td class="num">90.5</td><td class="num">59.0</td><td class="num" style="color:var(--crit)">−31.5</td></tr>
+      <tr><td>DocBinFormer</td><td class="dim">2023</td><td class="num">92.2</td><td class="num">60.3</td><td class="num" style="color:var(--crit)">−31.9</td></tr>
+      <tr><td>D2BFormer</td><td class="dim">2023</td><td class="num">93.1</td><td class="num">66.7</td><td class="num" style="color:var(--crit)">−26.4</td></tr>
+      <tr><td>GDB <span class="dim">— gated conv</span></td><td class="dim">2023</td><td class="num">91.8</td><td class="num">73.8</td><td class="num" style="color:var(--warn)">−18.0</td></tr>
+      <tr><td>DocDiff <span class="dim">— diffusion</span></td><td class="dim">2023</td><td class="num dim">—</td><td class="num">73.4</td><td class="num dim">—</td></tr>
+      <tr><td>NAF-DPM <span class="dim">— diffusion</span></td><td class="dim">2024</td><td class="num dim">—</td><td class="num">74.6</td><td class="num dim">—</td></tr>
+      <tr><td>DeepMine-Mamba</td><td class="dim">2026</td><td class="num">92.6</td><td class="num">75.9</td><td class="num" style="color:var(--warn)">−16.7</td></tr>
+      <tr class="hl"><td><strong>Decision-tree ensemble</strong> <span class="dim">— classical features</span></td><td class="dim">2025</td><td class="num"><strong>95.8</strong></td><td class="num"><strong>95.8</strong></td><td class="num" style="color:var(--good)"><strong>0.0</strong></td></tr>
+    </tbody>
+    <caption>Compiled from the DeepMine-Mamba benchmark table (arXiv 2606.08781), the Applied Sciences
+    2025 ensemble paper, and the "Fair Evaluation" study (arXiv 2401.11831). Numbers come from different
+    training protocols and are indicative, not a controlled head-to-head.</caption>
+  </table>
+  </div>
+
+  <div class="callout">
+    <h4>Read that drop column before you pick a model</h4>
+    <p>Six years of architecture work bought about four points of average F-measure and <em>lost</em>
+    robustness. A transformer at 92.2 average falls to 60.3 on unfamiliar degradation — worse than
+    Sauvola from the year 2000. Your users' photos are all unfamiliar degradation. Optimise the
+    right-hand column, not the left one.</p>
+  </div>
+
+  <div class="callout warn">
+    <h4>One result worth taking seriously, with a caveat</h4>
+    <p>The 2025 Applied Sciences paper trains a decision-tree ensemble on the <em>outputs</em> of several
+    classical local thresholders plus image statistics, and reports 95.8 across every DIBCO year including
+    2019 — while running on CPU in low memory. If it replicates, it is the single best fit for
+    "lightweight and reliable" in this entire survey. It is one paper's self-reported cross-validation,
+    so treat it as a strong lead to reproduce early, not as settled fact. Reproducing it is a day of work
+    and would de-risk the whole project.</p>
+  </div>
+</section>
+
+<section>
+  <div class="sec-head"><span class="sec-num">04</span><h2>The gap nobody has filled: binary is not transparent</h2></div>
+  <div class="prose">
+    <p>Every model above outputs a <strong>1-bit mask</strong> — each pixel is ink or not-ink. If you set
+    <code>alpha = mask</code> and call it a transparent PNG, you get hard, aliased, staircased strokes that
+    look wrong at every zoom level and composite badly onto any coloured background. This is the single
+    biggest reason no academic repo is shippable as-is.</p>
+    <p>What you actually want is <strong>alpha as ink opacity</strong>: continuous, antialiased, carrying
+    the natural density falloff at the edge of a pen stroke and the semi-transparency where the pen ran
+    dry. That is a matting problem layered on top of a segmentation problem.</p>
+  </div>
+
+  <div class="alpha-demo">
+    <figure class="swatch">
+      <div class="canvasbox">
+        <svg width="130" height="66" viewBox="0 0 130 66" aria-label="Hard binary stroke with stair-stepped edges">
+          <path d="M12 46 L26 46 L26 42 L34 42 L34 34 L42 34 L42 26 L54 26 L54 20 L70 20 L70 26 L82 26 L82 36 L94 36 L94 44 L108 44 L108 48 L118 48"
+            fill="none" stroke="#161A21" stroke-width="9" stroke-linecap="butt" stroke-linejoin="miter" shape-rendering="crispEdges"/>
+        </svg>
+      </div>
+      <figcaption><b>alpha = binary mask</b>Stair-stepped, uniform opacity, no stroke taper. What every published model gives you.</figcaption>
+    </figure>
+    <figure class="swatch">
+      <div class="canvasbox">
+        <svg width="130" height="66" viewBox="0 0 130 66" aria-label="Soft antialiased stroke with varying opacity">
+          <defs>
+            <linearGradient id="inkfade" x1="0" y1="0" x2="1" y2="0">
+              <stop offset="0" stop-color="#1B3A8C" stop-opacity="0.95"/>
+              <stop offset="0.55" stop-color="#1B3A8C" stop-opacity="0.88"/>
+              <stop offset="0.86" stop-color="#1B3A8C" stop-opacity="0.42"/>
+              <stop offset="1" stop-color="#1B3A8C" stop-opacity="0.12"/>
+            </linearGradient>
+          </defs>
+          <path d="M12 46 C26 47 30 30 42 28 C54 26 56 19 70 20 C84 21 82 38 94 42 C106 46 110 48 118 47"
+            fill="none" stroke="url(#inkfade)" stroke-width="8.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </div>
+      <figcaption><b>alpha = ink opacity</b>Smooth edges, density falloff, dry-pen taper preserved. What you have to build.</figcaption>
+    </figure>
+    <figure class="swatch">
+      <div class="canvasbox" style="background:#2547C4">
+        <svg width="130" height="66" viewBox="0 0 130 66" aria-label="Soft stroke composited on a coloured background">
+          <path d="M12 46 C26 47 30 30 42 28 C54 26 56 19 70 20 C84 21 82 38 94 42 C106 46 110 48 118 47"
+            fill="none" stroke="#FFFFFF" stroke-width="8.5" stroke-linecap="round" stroke-linejoin="round" opacity="0.94"/>
+        </svg>
+      </div>
+      <figcaption><b>composited</b>The test that matters: drop the PNG on a saturated background and look at the edges.</figcaption>
+    </figure>
+  </div>
+
+  <h3>The compositing maths, which is simpler than it sounds</h3>
+  <div class="prose wide">
+    <p>Model each observed pixel as ink laid over paper: <code>I = α·F + (1−α)·B</code>, where <code>B</code>
+    is the local paper colour and <code>F</code> is the pen colour. Estimate <code>B</code> first — a
+    morphological closing with a kernel wider than your thickest stroke, or a rolling-ball background,
+    recovers the paper even under a shadow gradient. Then alpha falls straight out of a division:</p>
+  </div>
+
+  <div class="formula">
+<span class="cm"># 1. paper background, kernel wider than the thickest stroke</span>
+B  = cv2.morphologyEx(I, cv2.MORPH_CLOSE, ellipse(<span class="kw">31</span>))
+B  = cv2.GaussianBlur(B, (<span class="kw">31</span>,<span class="kw">31</span>), <span class="kw">0</span>)          <span class="cm"># smooth the illumination field</span>
+
+<span class="cm"># 2. divide out the paper -> flat, evenly lit, shadow-free</span>
+N  = clip(I / maximum(B, <span class="kw">1</span>), <span class="kw">0</span>, <span class="kw">1</span>)             <span class="cm"># 1.0 = bare paper, 0.0 = solid ink</span>
+
+<span class="cm"># 3. raw opacity, per channel then reduced</span>
+a  = <span class="kw">1.0</span> - N.min(axis=<span class="kw">-1</span>)                    <span class="cm"># min channel keeps coloured ink</span>
+
+<span class="cm"># 4. gate with the network's PROBABILITY map, never the threshold</span>
+a  = a * smoothstep(p_ink, <span class="kw">0.25</span>, <span class="kw">0.75</span>)        <span class="cm"># kills paper texture, keeps soft edges</span>
+
+<span class="cm"># 5. pen colour from the confident core, not the feathered rim</span>
+F  = median(I[erode(p_ink &gt; <span class="kw">0.8</span>, <span class="kw">2</span>)], axis=<span class="kw">0</span>)
+
+<span class="cm"># 6. despeckle: drop components under ~8px at capture resolution</span>
+a  = drop_small_components(a, min_area=<span class="kw">8</span>)
+
+out = RGBA(F.broadcast_to(I.shape), alpha=a)
+  </div>
+
+  <div class="prose wide" style="margin-top:20px">
+    <p>Step 4 is the one that matters and the one that is easy to get wrong: <strong>gate with the
+    network's probability map, not its thresholded output</strong>. Thresholding destroys exactly the
+    sub-pixel information you need for a clean alpha. Every published binarizer throws it away in its
+    final layer; you want the logits.</p>
+    <p>That is roughly 150 lines of NumPy and OpenCV. It is the piece of genuine novelty in this project,
+    and it will do more for perceived quality than swapping one 92-F-measure model for another.</p>
+  </div>
+</section>
+
+<section>
+  <div class="sec-head"><span class="sec-num">05</span><h2>Can a general image model just do this?</h2></div>
+  <div class="prose">
+    <p>A fair question — Nano Banana and Seedream are extraordinary, and nobody wants to train a model
+    they do not have to. The answer turns on a single test, which is worth settling before anything else:
+    <strong>does it matter if a stroke changes?</strong></p>
+    <p>If it does, no current general-purpose image model can do this, for three independent reasons.
+    Any one of them alone would be disqualifying.</p>
+  </div>
+
+  <h3>They redraw. They do not extract.</h3>
+  <div class="prose wide">
+    <p>The DocRes group built a benchmark for exactly this question — <strong>OCRGenBench</strong>, 1,060
+    annotated samples across 33 OCR generative tasks, updated in April 2026 to cover Nano Banana Pro,
+    GPT-Image-1.5 and Seedream-4.5. Their findings on the tasks nearest yours, in their own words:</p>
+    <ul class="tight">
+      <li><strong>Appearance enhancement</strong> — <em>"GPT-4o and OmniGen2 exhibit erroneous text repetition"</em>; Qwen-Image and Janus-4o <em>"generate chaotic, unreadable text"</em>.</li>
+      <li><strong>Historical document restoration</strong> — <em>"all models fail to preserve original writing style"</em>; they <em>"mostly generate a new document rather than conducting restoration"</em>.</li>
+      <li><strong>Deshadowing</strong> — most models <em>"mistakenly repeat the textual content"</em>.</li>
+    </ul>
+  </div>
+  <div class="callout">
+    <h4>This is architectural, not a prompting problem</h4>
+    <p>A generative model resynthesizes the image from an understanding of it. For photographs of objects
+    that is a feature. For handwriting it is fatal: the strokes <em>are</em> the product. A model that
+    redraws your handwriting in its own idea of handwriting has destroyed the thing you asked it to keep —
+    and it will do so confidently and legibly, which makes the failure hard to notice at a glance.</p>
+  </div>
+
+  <h3>Most cannot emit an alpha channel at all</h3>
+  <div class="tscroll">
+  <table>
+    <thead><tr><th>Model</th><th>True transparency</th><th>How</th></tr></thead>
+    <tbody>
+      <tr><td>Nano Banana / Pro / 2 <span class="dim">— Gemini 2.5 Flash Image, 3 Pro Image, 3.1 Flash Image</span></td>
+        <td><span class="pill p-crit">No</span></td>
+        <td>Flat RGB, no alpha. Asking for "transparent background" returns a <em>painted</em> checkerboard, or solid white.</td></tr>
+      <tr><td>Seedream 4.0 / 4.5</td><td><span class="pill p-crit">No</span></td><td>JPEG output only — nowhere to put an alpha channel.</td></tr>
+      <tr><td>Seedream 5.0 / 5.0-pro</td><td><span class="pill p-warn">Prompt-only</span></td><td>PNG output, alpha if asked, not guaranteed per call.</td></tr>
+      <tr><td>GPT-Image-1 / 1.5</td><td><span class="pill p-good">Yes</span></td><td><code>background: "transparent"</code> as an API parameter.</td></tr>
+      <tr><td>GPT-Image-2</td><td><span class="pill p-good">Yes</span></td><td>Same parameter, added in preview 20 August 2026.</td></tr>
+      <tr><td>Flux · Midjourney</td><td><span class="pill p-crit">No</span></td><td>Flux only via the finicky LayerDiffuse extension; Midjourney's editor gives a hard cutout.</td></tr>
+      <tr><td>Recraft</td><td><span class="pill p-good">Yes</span></td><td>Native, and the most reliable of the generators.</td></tr>
+    </tbody>
+    <caption>Even where alpha exists it is a <strong>hard cutout</strong> — an object mask, not the
+    continuous ink-opacity alpha that section 04 describes. Right mechanism, wrong resolution.</caption>
+  </table>
+  </div>
+
+  <h3>The mask route is smarter, and closed</h3>
+  <div class="prose wide">
+    <p>Asking a model for a <em>mask</em> rather than for pixels sidesteps hallucination entirely — the
+    model never touches your ink. It is the right instinct. Both available paths are blocked:</p>
+    <ul class="tight">
+      <li><strong>Gemini segmentation is deprecated.</strong> Google's release notes: <em>"Image segmentation is not supported in Gemini 3.x. For segmentation workloads, continue using Gemini 2.5 Flash with thinking off, or Gemini Robotics-ER 1.6."</em> Newer models return <strong>polygons</strong> rather than per-pixel probability maps, and a polygon cannot describe a pen stroke.</li>
+      <li><strong>SAM 3</strong> does genuine zero-shot text-promptable segmentation (47.0 LVIS mask AP, a 22% jump over the previous best). But it is <strong>3.45&nbsp;GB</strong> and roughly 2.9&nbsp;s per image <em>on a GPU</em>, and it returns object-level masks. Pen strokes are 2–3&nbsp;px wide and topologically tangled — the wrong shape of problem, and fatal for a lightweight desktop app.</li>
+    </ul>
+  </div>
+
+  <h3>If you settle for a white background instead of transparency</h3>
+  <div class="prose wide">
+    <p>This changes a great deal — just not in the direction it appears to. It removes the second blocker
+    and leaves the first completely intact. A generative model asked for "clean handwriting on white" will
+    still redraw your strokes; it will simply do so without the checkerboard artefact.</p>
+    <p>What it <em>does</em> change is that <strong>the specialist route becomes trivial</strong>. Dark ink
+    on a white ground is the native output format of every model in section 02 — it is literally what
+    binarization means. You can have this today, zero-shot, with no training and no fine-tuning:</p>
+  </div>
+  <div class="formula">
+python inference.py --im_path ./photo.jpg --task binarization   <span class="cm"># DocRes, MIT, pretrained</span>
+  </div>
+  <div class="prose wide" style="margin-top:18px">
+    <p>That is the honest answer to "without fine-tuning". Pretrained specialist weights <em>are</em>
+    off-the-shelf — the no-training route was never the language model, it was the model built for this job.</p>
+  </div>
+
+  <div class="callout note">
+    <h4>One decision now that keeps both doors open</h4>
+    <p>Output <strong>greyscale ink on white, never pure black-and-white binary</strong>. Transparency is
+    then one line away — <code>alpha = 1 − grey</code> — and you can ship the white-background version
+    first and add RGBA later without rewriting anything. Keep the estimated pen colour from step&nbsp;5 of
+    section 04 alongside it and you keep the original blue too. This costs nothing today and saves the
+    whole pipeline later. Throwing away the greyscale is the one irreversible mistake available here.</p>
+  </div>
+
+  <div class="callout warn">
+    <h4>The strategic cost, which is the real one</h4>
+    <p>"Photo in, clean document on white out" is a solved consumer problem. CamScanner, Adobe Scan, Quark
+    and WPS all do it, they do it well, they are free, and they are already on your users' phones.
+    <strong>Transparency is the differentiator</strong> — it is what lets someone drop their own
+    handwriting onto a slide, a note-taking app, a design, or a coloured page. Drop it and you have built
+    a worse CamScanner. Keep it and you have built something that does not currently exist.</p>
+  </div>
+
+  <h3>The test to apply</h3>
+  <div class="tscroll">
+  <table>
+    <thead><tr><th>What the output is for</th><th>Stroke fidelity</th><th>Route</th></tr></thead>
+    <tbody>
+      <tr><td>Signatures, legal documents, archival scans</td><td><span class="pill p-crit">Non-negotiable</span></td><td>Specialist pipeline only. A changed stroke is a forged one.</td></tr>
+      <tr><td>Personal handwriting, journals, a loved one's letters, artwork</td><td><span class="pill p-crit">Non-negotiable</span></td><td>Specialist pipeline only. The character of the hand is the entire point.</td></tr>
+      <tr><td>Tidying lecture notes you will read once</td><td><span class="pill p-warn">Moderate</span></td><td>A generative model is defensible. Flux.1-Kontext-dev was the least-bad in the benchmark.</td></tr>
+      <tr><td>You would accept the words retyped in a font</td><td><span class="pill p-flat">None</span></td><td>Then this is an OCR product, not an extraction product. Build that instead — it is easier.</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <h3>Where generative models do earn their place</h3>
+  <div class="prose wide">
+    <ul class="tight">
+      <li><strong>As an offline label generator.</strong> This is the genuinely good use. Run DocDiff or NAF-DPM across your own captures, hand-correct the output, and train your small U-Net on the result. You distil their quality into 5&nbsp;MB that runs on a CPU. Phase 1 with a shortcut.</li>
+      <li><strong>As the reasoning layer</strong> described in section 09 — looking at a capture and choosing parameters, or resolving "keep only the blue pen" into pipeline settings. Reasoning about the image, never redrawing it.</li>
+      <li><strong>Flux.1-Kontext-dev</strong> is worth one experiment if you want to test this yourself: the benchmark found it the strongest on deshadowing, <em>"with most texts preserved and shadow removed"</em>, and <em>"nearly perfect"</em> on English document deblurring. Open weights, so you can run it locally.</li>
+    </ul>
+  </div>
+
+  <div class="callout note">
+    <h4>Five minutes that settle it</h4>
+    <p>Take one messy photo. Ask Nano Banana to remove the background and keep only the handwriting. Then
+    overlay its output on the original at 200% and look at the letterforms. The stroke drift is immediately
+    visible, and it will tell you more than any benchmark table — including this one.</p>
+  </div>
+</section>
+
+<section>
+  <div class="sec-head"><span class="sec-num">06</span><h2>The pipeline</h2></div>
+  <div class="prose">
+    <p>Each stage is independently switchable and independently testable. Stages 2, 3 and 9 are optional
+    and should be off by default — every extra model is size, latency and a new failure mode.</p>
+  </div>
+
+  <div class="pipe">
+    <div class="stage"><span class="idx">01</span><div>
+      <h4>Capture</h4>
+      <p>Screenshot region, file drop, clipboard paste, or camera. All four land on the same in-memory RGB array; nothing downstream knows the difference.</p>
+      <p class="tech">xcap (Rust) · XDG portal on Wayland · mss (Python fallback)</p>
+    </div></div>
+    <div class="stage opt"><span class="idx">02</span><div>
+      <h4>Page detection &amp; perspective correction</h4>
+      <p>Find the sheet, unwarp it. Skip entirely for screenshots and flat scans — it is pure risk there.</p>
+      <p class="tech">OpenCV quad detect, or DocRes dewarping head + MBD</p>
+    </div></div>
+    <div class="stage opt"><span class="idx">03</span><div>
+      <h4>Upscale, only if genuinely low-res</h4>
+      <p>Gate on measured stroke width. Under ~2px of stroke there is nothing to recover and a super-resolver will invent plausible ink that was never written.</p>
+      <p class="tech">Real-ESRGAN ×2 · or Lanczos + unsharp for the cheap path</p>
+    </div></div>
+    <div class="stage"><span class="idx">04</span><div>
+      <h4>Illumination normalization</h4>
+      <p>Estimate the paper background field <code>B</code>. Removes shadows and lighting gradients, and hands stage 7 the value it needs for alpha.</p>
+      <p class="tech">morphological close + Gaussian, kernel &gt; max stroke width</p>
+    </div></div>
+    <div class="stage"><span class="idx">05</span><div>
+      <h4>Ink probability map</h4>
+      <p>The neural network. Tiled at 512×512 with stride 384 and a Hann-feathered blend. <strong>Never resize the whole image</strong> — thin strokes disappear and never come back.</p>
+      <p class="tech">U-Net, sigmoid output kept as float, ONNX</p>
+    </div></div>
+    <div class="stage"><span class="idx">06</span><div>
+      <h4>Handwriting vs. printed split</h4>
+      <p>A second output channel, not a second model. Lets the user keep only the pen and drop the form underneath it — the feature that makes this more than a background remover.</p>
+      <p class="tech">extra head trained on SignaTR6K + EnsExam</p>
+    </div></div>
+    <div class="stage"><span class="idx">07</span><div>
+      <h4>Alpha compositing &amp; colour recovery</h4>
+      <p>Section 04. Turns a probability map into an RGBA image that survives being dropped on a coloured slide.</p>
+      <p class="tech">~150 lines, NumPy + OpenCV, no model</p>
+    </div></div>
+    <div class="stage"><span class="idx">08</span><div>
+      <h4>Cleanup &amp; quality gate</h4>
+      <p>Connected-component despeckle. Then check ink-area fraction and contrast against sane bounds; if they are out of range, fall back to the classical path and say so in the UI rather than returning confident nonsense.</p>
+      <p class="tech">cv2.connectedComponentsWithStats</p>
+    </div></div>
+    <div class="stage opt"><span class="idx">09</span><div>
+      <h4>Vectorize</h4>
+      <p>The real answer to low resolution: trace once, scale forever. Also what makes the output usable in a note app rather than just viewable.</p>
+      <p class="tech">vtracer (Rust, in-process) or potrace</p>
+    </div></div>
+  </div>
+</section>
+
+<section>
+  <div class="sec-head"><span class="sec-num">07</span><h2>Which model to train, and how big</h2></div>
+  <div class="prose wide">
+    <p>Do not ship a diffusion model. DocDiff and NAF-DPM produce the best numbers on hard images, but
+    multi-step sampling is flatly incompatible with "lightweight". Use them offline, on your own captures,
+    to generate pseudo-labels — then distil that into one small feed-forward network. You get most of the
+    quality at a fraction of the cost, and your users never wait on a sampler.</p>
+  </div>
+
+  <dl class="kv">
+    <div><dt>Architecture</dt><dd>U-Net with a MobileNetV3-Large or EfficientNet-Lite encoder. Two output heads: ink probability, and handwritten-vs-printed.</dd></div>
+    <div><dt>Parameters</dt><dd>Target 2–8&nbsp;M. ConvNeXt-Tiny is reported as the best accuracy/memory trade-off in the ERN-Net study at 28&nbsp;M — too heavy for a desktop app, useful as your accuracy ceiling during research.</dd></div>
+    <div><dt>File size</dt><dd>Roughly 10–30&nbsp;MB at fp32, 3–8&nbsp;MB at int8. For scale: rembg ships U2Net at 176&nbsp;MB and U2Net-P at 4&nbsp;MB, and most users pick the small one.</dd></div>
+    <div><dt>Input</dt><dd>512×512 tiles, stride 384, dimensions a multiple of 8. Full-resolution sliding window with feathered blending at inference.</dd></div>
+    <div><dt>Losses</dt><dd>Dice + focal for class imbalance — ink is a few percent of pixels. Add an edge-weighted term so thin strokes are not averaged away.</dd></div>
+    <div><dt>Export</dt><dd>ONNX opset 17, dynamic batch, static spatial dims. Verify parity against PyTorch on a fixed 50-image set before you trust it.</dd></div>
+  </dl>
+
+  <h3>Training data</h3>
+  <div class="prose wide">
+    <p>This determines reliability far more than architecture does. The public real-image datasets are
+    tiny — all ten DIBCO years together are about 140 images.</p>
+    <ul class="tight">
+      <li><strong>DIBCO / H-DIBCO 2009–2019</strong> — ~140 images. Your evaluation set, not your training set.</li>
+      <li><strong>LS-HDIB</strong> — large-scale handwritten binarization, ICPR 2022. The main real-data source.</li>
+      <li><strong>NoisyOffice</strong> (UCI, 216 synthetic) and the <strong>shipping-label set</strong> (1,082 real).</li>
+      <li><strong>SignaTR6K</strong> (6,257), <strong>EnsExam</strong> (545), <strong>Baidu handwriting-erasure</strong> (1,281) — these carry handwritten-vs-printed labels and are what make stage 6 possible.</li>
+      <li><strong>Your own captures</strong> — 200–500 photos taken the way your users will take them. Worth more than any public set.</li>
+    </ul>
+    <p>The real lever is <strong>synthetic composition</strong>: take clean ink, composite it over real paper,
+    whiteboard and screenshot backgrounds, then simulate what a phone actually does to it — JPEG blocking,
+    downscale-then-upscale, motion blur, illumination gradients, cast shadows, bleed-through, sensor noise,
+    moiré, perspective. The ERN-Net paper reports DIBCO-style synthetic pretraining is worth
+    <strong>+2.2 F-measure at zero inference cost</strong>, for about 90 minutes of extra training on a
+    mid-range GPU.</p>
+  </div>
+</section>
+
+<section>
+  <div class="sec-head"><span class="sec-num">08</span><h2>Shipping it: lightweight and cross-platform</h2></div>
+  <div class="prose">
+    <p>Two layers. A Python core that is the reference implementation and the CLI, and a Rust/Tauri shell
+    that is what users install. The shell never needs a Python runtime on the user's machine.</p>
+  </div>
+
+  <div class="tscroll">
+  <table>
+    <thead><tr><th>Layer</th><th>Choice</th><th>Why</th></tr></thead>
+    <tbody>
+      <tr><td>Core library</td><td class="repo">Python · onnxruntime · opencv · numpy</td><td>Where you develop, benchmark and train. Ships as a pip package and a CLI for the technical users.</td></tr>
+      <tr><td>Desktop shell</td><td class="repo">Tauri 2</td><td>~15 MB installer against Electron's 100 MB+. System webview, Rust backend, real global shortcuts and tray.</td></tr>
+      <tr><td>Inference</td><td class="repo">ort crate (ONNX Runtime)</td><td>One measured migration reports 32.7&nbsp;ms → 18&nbsp;ms moving from browser WASM to native <code>ort</code>, with lower memory variance.</td></tr>
+      <tr><td>Acceleration</td><td class="repo">CoreML / DirectML / CUDA / CPU</td><td>Registered per-target at build time. Always keep a CPU path — it is the one that never fails.</td></tr>
+      <tr><td>Screen capture</td><td class="repo">xcap</td><td>Windows, macOS and Linux from one API. On macOS you must request Screen Recording (TCC) permission.</td></tr>
+      <tr><td>Vectorization</td><td class="repo">vtracer</td><td>Rust, in-process, no subprocess and no system dependency.</td></tr>
+      <tr><td>Browser build</td><td class="repo">onnxruntime-web</td><td>Optional later. An int8 model under 10 MB is viable in WASM+SIMD; imgly/background-removal-js (7.3k★) proves the pattern.</td></tr>
+      <tr><td>Mobile</td><td class="repo">same ONNX → CoreML / NNAPI</td><td>Or ncnn/MNN if you need tighter control. Deliberately out of scope for v1.</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <div class="callout warn">
+    <h4>Two packaging traps found in the research</h4>
+    <p><strong>ONNX Runtime and AppImage.</strong> Building <code>ort</code> with the <code>load-dynamic</code>
+    feature produces a Linux bundle that fails at runtime with
+    <code>cannot open shared object file: libonnxruntime.so</code>, because the bundler cannot see a
+    dependency resolved at load time. Either use the <code>download-binaries</code> feature or add an
+    explicit fetch-and-bundle step. Real projects have shipped broken releases over this.</p>
+    <p><strong>Wayland screenshots.</strong> Raw X11 grabs return a black frame under Wayland. You need the
+    XDG desktop portal, <code>org.freedesktop.portal.Screenshot</code>, which is a different code path with
+    a permission prompt. Budget for it — Linux users will hit it on day one, and Python's <code>mss</code>
+    does not solve it.</p>
+  </div>
+</section>
+
+<section>
+  <div class="sec-head"><span class="sec-num">09</span><h2>On calling it an agent</h2></div>
+  <div class="prose wide">
+    <p>You described this as an AI agent. Worth being precise, because it changes what you build: the
+    pixel path here should be a <strong>deterministic vision pipeline</strong>, and keeping it that way is
+    what makes it reliable. Generative models hallucinate strokes — the DocRes authors published a 2025
+    evaluation specifically on this failure mode, and it is not subtle. A model that invents a plausible
+    letter where the ink had faded has destroyed the document.</p>
+    <p>There is real room for a language model, just not in the pixel path:</p>
+    <ul class="tight">
+      <li><strong>Parameter selection</strong> — look at the capture, decide whether to dewarp, upscale, or drop straight to the classical path.</li>
+      <li><strong>Natural-language control</strong> — "keep only the blue pen", "thicken the strokes", "drop the printed form" resolved into pipeline parameters.</li>
+      <li><strong>Post-processing</strong> — naming, filing, and OCR'ing the extracted ink into searchable text alongside the PNG.</li>
+      <li><strong>Triage</strong> — explaining <em>why</em> a capture came out badly, which is the difference between a tool people trust and one they abandon.</li>
+    </ul>
+    <p>Build the pipeline first and make it excellent. The agent layer is a thin wrapper over a
+    well-specified parameter surface, and it is much easier to add to a deterministic core than to
+    retrofit determinism into a generative one.</p>
+  </div>
+</section>
+
+<section>
+  <div class="sec-head"><span class="sec-num">10</span><h2>What will go wrong</h2></div>
+  <div class="prose wide">
+    <ul class="tight">
+      <li><strong>Generalization, not accuracy.</strong> Section 03's drop column is the whole story. Build a golden set of your own real captures on day one, score with the DIBCO metrics, and never optimise against DIBCO alone.</li>
+      <li><strong>Sub-2-pixel strokes cannot be recovered.</strong> Below roughly 100 DPI the information is gone. Super-resolution will produce something convincing and wrong. Detect this case and tell the user plainly.</li>
+      <li><strong>Pencil and coloured ink.</strong> Graphite on textured paper has almost no contrast against the texture; highlighter is lighter than the paper in some channels. Both break the assumption baked into every DIBCO-trained model. Collect these cases early.</li>
+      <li><strong>Weight licensing.</strong> DocEnTr carries no clear licence and GDB carries none at all. You cannot redistribute those weights. DocRes, DocDiff and NAF-DPM are MIT — check the weight files separately from the code, since DocRes hosts its checkpoints off-repo.</li>
+      <li><strong>Tiling seams.</strong> Visible as faint vertical or horizontal lines through strokes. Fixed by feathered blending, not by a larger tile.</li>
+      <li><strong>Bleed-through.</strong> Ink from the reverse side is genuinely ambiguous — it is real ink. Six of the twenty DIBCO 2019 images have it, which is a large part of why that benchmark breaks models.</li>
+    </ul>
+  </div>
+</section>
+
+<section>
+  <div class="sec-head"><span class="sec-num">11</span><h2>Sequenced build</h2></div>
+  <div class="phases">
+    <div class="phase">
+      <span class="ph">PHASE 0 · ~1 week</span>
+      <h4>Classical baseline</h4>
+      <p>Background division, Sauvola, connected-component filtering, alpha compositing from section 04. No model at all. Assemble the golden test set of 200+ real captures in the same week.</p>
+      <span class="out">Ships. Becomes the permanent fallback path.</span>
+    </div>
+    <div class="phase">
+      <span class="ph">PHASE 1 · ~2 weeks</span>
+      <h4>Learned ink mask</h4>
+      <p>Small U-Net on DIBCO + LS-HDIB + heavy synthetic augmentation. Export to ONNX. Reproduce the 2025 ensemble result in parallel and keep whichever wins on <em>your</em> golden set.</p>
+      <span class="out">Measurable win over Phase 0, or it does not ship.</span>
+    </div>
+    <div class="phase">
+      <span class="ph">PHASE 2 · ~2 weeks</span>
+      <h4>The app</h4>
+      <p>Tauri shell, global-shortcut region capture, drag-drop, live preview on a checkerboard, PNG and SVG export. Quality gate wired to the fallback.</p>
+      <span class="out">The product a non-technical user can install.</span>
+    </div>
+    <div class="phase">
+      <span class="ph">PHASE 3 · open-ended</span>
+      <h4>Sharpen</h4>
+      <p>Handwritten-vs-printed head. Diffusion distillation on your own captures. Optional dewarp and upscale. Natural-language controls. Browser and mobile builds.</p>
+      <span class="out">Driven by what the golden set still fails.</span>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="sec-head"><span class="sec-num">12</span><h2>Sources</h2></div>
+  <div class="sources">
+    <p>Paper &amp; dataset index<br><a href="https://github.com/ZZZHANG-jx/Recommendations-Document-Image-Processing">github.com/ZZZHANG-jx/Recommendations-Document-Image-Processing</a></p>
+    <p>DocRes, CVPR 2024<br><a href="https://arxiv.org/abs/2405.04408">arxiv.org/abs/2405.04408</a></p>
+    <p>DocDiff, ACM MM 2023<br><a href="https://arxiv.org/abs/2305.03892">arxiv.org/abs/2305.03892</a></p>
+    <p>NAF-DPM, 2024<br><a href="https://arxiv.org/abs/2404.05669">arxiv.org/abs/2404.05669</a></p>
+    <p>Fair evaluation of DL binarizers<br><a href="https://arxiv.org/abs/2401.11831">arxiv.org/abs/2401.11831</a></p>
+    <p>DeepMine-Mamba benchmark table<br><a href="https://arxiv.org/html/2606.08781v1">arxiv.org/html/2606.08781v1</a></p>
+    <p>ERN-Net, backbone &amp; pretraining study<br><a href="https://arxiv.org/html/2606.11710v1">arxiv.org/html/2606.11710v1</a></p>
+    <p>Decision-tree ensemble, Appl. Sci. 2025<br><a href="https://www.mdpi.com/2076-3417/15/15/8374">mdpi.com/2076-3417/15/15/8374</a></p>
+    <p>Binarization review, 2025<br><a href="https://pmc.ncbi.nlm.nih.gov/articles/PMC12112497/">pmc.ncbi.nlm.nih.gov/articles/PMC12112497</a></p>
+    <p>OCRGenBench — generative models for OCR<br><a href="https://github.com/NiceRingNode/Awesome-Generative-Models-for-OCR">github.com/NiceRingNode/Awesome-Generative-Models-for-OCR</a></p>
+    <p>Gemini image understanding &amp; segmentation<br><a href="https://ai.google.dev/gemini-api/docs/image-understanding">ai.google.dev/gemini-api/docs/image-understanding</a></p>
+    <p>SAM 3 concept segmentation<br><a href="https://docs.ultralytics.com/models/sam-3">docs.ultralytics.com/models/sam-3</a></p>
+    <p>Tauri + ort migration measurements<br><a href="https://xmichele.substack.com/p/how-we-made-our-on-device-ai-models">xmichele.substack.com</a></p>
+    <p>LS-HDIB dataset<br><a href="https://github.com/kaustubh-sadekar/LS-HDIB">github.com/kaustubh-sadekar/LS-HDIB</a></p>
+    <p>Closest shipping pipeline<br><a href="https://github.com/danilo-znamerovszkij/draw-your-font">github.com/danilo-znamerovszkij/draw-your-font</a></p>
+  </div>
+</section>
+
+</div>

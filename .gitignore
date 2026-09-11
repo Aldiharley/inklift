@@ -1,0 +1,9 @@
+# never commit real credentials
+.env
+.env.local
+
+/target
+samples/*.ink.png
+samples/*.white.png
+samples/contact_sheet.png
+bench/

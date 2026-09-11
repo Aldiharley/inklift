@@ -1,0 +1,20 @@
+[package]
+name = "inklift-cli"
+description = "Command-line handwriting ink extractor."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[lib]
+name = "inklift_cli"
+path = "src/lib.rs"
+
+[[bin]]
+name = "inklift"
+path = "src/main.rs"
+
+[dependencies]
+image = { version = "0.25.9", default-features = false, features = ["png", "jpeg"] }
+inklift-api = { version = "0.1.0", path = "../inklift-api" }
+inklift-core = { path = "../inklift-core" }
