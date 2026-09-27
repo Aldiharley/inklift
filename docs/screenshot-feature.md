@@ -1,6 +1,6 @@
 # Screenshot capture — spec, plan, and validation
 
-Status: **implemented; overlay awaiting manual sign-off**
+Status: **implemented and manually validated; clipboard paste unconfirmed**
 Feature flag: `shot` (off by default, like `api`)
 
 ## 1. Goal
@@ -177,14 +177,42 @@ deliberately the thinnest possible layer.
 
 ### Manual, with a human
 
-Only the overlay. Checklist:
+Only the overlay. Signed off 2026-09-27 except where noted.
 
-- [ ] Overlay covers the full screen and shows the frozen frame
-- [ ] Selection area is undimmed, dimensions readout tracks the drag
-- [ ] Dragging right-to-left / bottom-to-top gives the same rect as the reverse
-- [ ] `Esc` cancels, no files written, exit code 1
-- [ ] The overlay does not appear in its own capture
-- [ ] Result lands on the clipboard and pastes into another application
+- [x] Overlay covers the full screen and shows the frozen frame
+- [x] Selection area is undimmed and tracks the drag
+- [x] A backwards drag gives the same rect as the forward one — confirmed by
+      the operator, and the capture came back well formed at the reported size
+      with its origin at the top-left corner
+- [x] `Esc` cancels, no files written, exit code 1 — observed on the first run
+- [x] The overlay does not appear in its own capture — **failed first, now
+      fixed.** See the defects below
+- [ ] Result lands on the clipboard and pastes into another application —
+      `arboard` accepts the image, but nothing has yet confirmed a paste on the
+      receiving end
+
+### Defects this manual pass found
+
+Both were invisible to the automated suite, and both were in the seam the plan
+had already identified as untestable.
+
+1. **The overlay photographed itself.** Interactive capture grabbed the screen
+   a second time after a region was chosen, by which point the overlay was on
+   top of it. Every interactive capture came back at 45% brightness with a row
+   of the overlay's own border in it: measured 660 border pixels across a
+   660px-wide result, brightest pixel 115 instead of 255. Fixed by cropping the
+   frame already held. Re-measured: 0 border pixels, brightest 255.
+
+2. **Failures posed as cancellations.** Window creation, surface creation and
+   resize errors were all discarded, leaving the outcome at `Pending`, which
+   the caller mapped to `Cancelled`. The first run reported "cancelled" when
+   the real cause was unknown, and it cost a round of guessing. Errors now
+   carry their cause, and an event loop that ends without the user acting is
+   reported as a fault.
+
+A third, unrelated to the overlay: dark-themed captures are light ink on a dark
+ground, which the pipeline had no way to handle. Addressed with `--invert` plus
+a detector that suggests it.
 
 ### Acceptance criteria
 
@@ -220,7 +248,7 @@ live against the real X server.
 | 2 | Suite passes in every build configuration | 4 / 4 |
 | 3 | Default binary links no capture stack | confirmed: no `winit`, `softbuffer`, `x11rb` or `arboard` symbols. 1.5 MB vs 6.4 MB |
 | 4 | Cancelling leaves no files | `SelectionState` unit-tested; the file-level path shares the early return proven by the off-screen test |
-| 5 | Manual overlay checklist | **outstanding** |
+| 5 | Manual overlay checklist | 5 of 6 signed off; clipboard paste still unconfirmed |
 
 ### Also confirmed
 
