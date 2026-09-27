@@ -178,3 +178,43 @@ fn resize_lets_a_differently_sized_result_be_scored() {
         let _ = std::fs::remove_dir_all(d);
     }
 }
+
+/// Transparent PNGs are exactly what the hosted path returns, and dropping the
+/// alpha channel leaves cleared pixels holding whatever RGB sat underneath -
+/// usually black, which then counts as solid ink. Transparent must read as
+/// background, the same as white paper does.
+#[test]
+fn transparent_pixels_read_as_background_not_ink() {
+    let d = dir("alpha");
+    let path = d.join("a.png");
+    let (w, h) = (16usize, 16usize);
+    // Everything cleared, with black left underneath, plus one opaque black dot.
+    let mut rgba = vec![0u8; w * h * 4];
+    let i = 8 * w + 8;
+    rgba[i * 4 + 3] = 255;
+
+    inklift_cli::save_rgba(&path, w, h, &rgba).unwrap();
+    let mask = load_mask(&path, 128, false).unwrap();
+
+    assert_eq!(mask.count(), 1, "only the opaque dot is ink, not the cleared field");
+    assert!(mask.get(8, 8));
+    assert!(!mask.get(2, 2), "a cleared pixel must not count as ink");
+    let _ = std::fs::remove_dir_all(d);
+}
+
+#[test]
+fn semi_transparent_ink_still_counts_when_dark_enough() {
+    let d = dir("alpha2");
+    let path = d.join("b.png");
+    let (w, h) = (8usize, 8usize);
+    let mut rgba = vec![0u8; w * h * 4];
+    // A black pixel at 75% opacity composites to ~64/255 over white: still ink.
+    let i = 4 * w + 4;
+    rgba[i * 4 + 3] = 191;
+    inklift_cli::save_rgba(&path, w, h, &rgba).unwrap();
+
+    let mask = load_mask(&path, 128, false).unwrap();
+
+    assert_eq!(mask.count(), 1);
+    let _ = std::fs::remove_dir_all(d);
+}

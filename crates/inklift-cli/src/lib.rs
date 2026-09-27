@@ -21,13 +21,20 @@ use inklift_core::Grid;
 pub type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 
 /// Read an image as three `[0, 1]` channel planes.
+///
+/// Transparency is composited over white rather than discarded. Simply
+/// dropping the alpha channel leaves cleared pixels holding whatever RGB sat
+/// underneath - usually black - which then reads as solid ink. Treating clear
+/// as paper is both what a viewer shows and what the pipeline expects.
 pub fn load_rgb(path: &Path) -> Result<[Grid; 3]> {
-    let img = image::open(path)?.to_rgb8();
+    let img = image::open(path)?.to_rgba8();
     let (w, h) = (img.width() as usize, img.height() as usize);
     let mut planes = [Grid::new(w, h), Grid::new(w, h), Grid::new(w, h)];
     for (i, px) in img.pixels().enumerate() {
+        let a = px.0[3] as f32 / 255.0;
         for c in 0..3 {
-            planes[c].data_mut()[i] = px.0[c] as f32 / 255.0;
+            let v = px.0[c] as f32 / 255.0;
+            planes[c].data_mut()[i] = a * v + (1.0 - a);
         }
     }
     Ok(planes)
