@@ -100,3 +100,20 @@ impl SelectionState {
         self.bounds
     }
 }
+
+/// Turn two raw drag corners into a capture rectangle, or `None` if the user
+/// did not really select anything.
+///
+/// The GUI overlay is a webview that reports where the pointer went down and
+/// came up; every rule about what that means — normalising the direction,
+/// trimming to the screen, treating a sliver as a misclick — stays here, so
+/// there is one implementation and it is the tested one.
+pub fn resolve_pick(x0: i32, y0: i32, x1: i32, y1: i32, bounds: &Rect, min: u32) -> Option<Rect> {
+    let mut state = SelectionState::new(*bounds, min, min);
+    state.press(x0, y0);
+    state.drag(x1, y1);
+    match state.release() {
+        Outcome::Selected(rect) => Some(rect),
+        _ => None,
+    }
+}

@@ -13,7 +13,7 @@ use std::sync::Mutex;
 use base64::Engine;
 use inklift_core::{Grid, Options, extract, looks_inverted, parse_ink_color};
 use serde::{Deserialize, Serialize};
-use tauri::{Manager, State};
+use tauri::{Emitter, Manager, State};
 
 /// Longest edge of the preview proxy. Chosen against the measured budget:
 /// roughly 150 ms for 900×500 on one core, which keeps a dragged slider fluid.
@@ -24,9 +24,20 @@ struct Source {
     image: image::RgbaImage,
 }
 
+/// A capture taken and held while the user drags a box over it.
+///
+/// The frame is grabbed *before* the overlay appears and cropped afterwards —
+/// never re-grabbed. Going back to the screen once the overlay is up
+/// photographs the overlay, which is exactly the bug the CLI shipped with once.
+struct Pending {
+    frame: image::RgbaImage,
+    origin: inklift_shot::Rect,
+}
+
 #[derive(Default)]
 struct App {
     source: Mutex<Option<Source>>,
+    pending: Mutex<Option<Pending>>,
 }
 
 /// What the UI sends back on every slider move.
@@ -59,6 +70,7 @@ impl Params {
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
+#[derive(Clone)]
 struct Loaded {
     label: String,
     width: u32,
@@ -165,6 +177,114 @@ fn screens() -> Result<Vec<String>, String> {
         .collect())
 }
 
+/// The frozen screen the overlay draws, plus where it sits.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct Overlay {
+    png: String,
+    x: i32,
+    y: i32,
+    width: u32,
+    height: u32,
+}
+
+/// Grab the screen, then raise a full-screen window over the frozen image.
+///
+/// This order is the whole trick: capture first, show second.
+#[tauri::command]
+fn begin_pick(app: tauri::AppHandle, state: State<App>) -> Result<(), String> {
+    use inklift_shot::{Capturer, X11Capturer};
+    let cap = X11Capturer::new()?;
+    let monitors = cap.monitors()?;
+    let screen = monitors
+        .iter()
+        .find(|m| m.primary)
+        .or_else(|| monitors.first())
+        .ok_or("no screens detected")?;
+
+    let frame = cap.grab(&screen.bounds)?;
+    let img = image::RgbaImage::from_raw(frame.width(), frame.height(), frame.to_rgba8())
+        .ok_or("capture did not produce a usable image")?;
+    *state.pending.lock().unwrap() = Some(Pending { frame: img, origin: screen.bounds });
+
+    if let Some(w) = app.get_webview_window("overlay") {
+        let _ = w.close();
+    }
+    tauri::WebviewWindowBuilder::new(&app, "overlay", tauri::WebviewUrl::App("overlay.html".into()))
+        .title("inklift — select a region")
+        .decorations(false)
+        .always_on_top(true)
+        .skip_taskbar(true)
+        .resizable(false)
+        .position(screen.bounds.x as f64, screen.bounds.y as f64)
+        .inner_size(screen.bounds.width as f64, screen.bounds.height as f64)
+        .build()
+        .map_err(|e| format!("could not open the selection overlay: {e}"))?;
+    Ok(())
+}
+
+/// The overlay asks for the frozen frame once it is up.
+#[tauri::command]
+fn overlay_frame(state: State<App>) -> Result<Overlay, String> {
+    let guard = state.pending.lock().unwrap();
+    let p = guard.as_ref().ok_or("no capture is pending")?;
+    Ok(Overlay {
+        png: png_data_uri(p.frame.width(), p.frame.height(), p.frame.as_raw())?,
+        x: p.origin.x,
+        y: p.origin.y,
+        width: p.origin.width,
+        height: p.origin.height,
+    })
+}
+
+fn close_overlay(app: &tauri::AppHandle) {
+    if let Some(w) = app.get_webview_window("overlay") {
+        let _ = w.close();
+    }
+}
+
+/// Two raw corners in, a cropped source out. All the rules about what a drag
+/// means live in `inklift_shot::resolve_pick`, where they are unit-tested.
+#[tauri::command]
+fn finish_pick(
+    x0: i32, y0: i32, x1: i32, y1: i32,
+    app: tauri::AppHandle, state: State<App>,
+) -> Result<Option<Loaded>, String> {
+    close_overlay(&app);
+    let pending = state.pending.lock().unwrap().take().ok_or("no capture is pending")?;
+
+    let Some(rect) = inklift_shot::resolve_pick(x0, y0, x1, y1, &pending.origin, 8) else {
+        return Ok(None); // a misclick, not a failure
+    };
+
+    // Crop what we already hold. Never grab again: the overlay is on screen.
+    let local = rect.relative_to(&pending.origin);
+    let cropped = image::imageops::crop_imm(
+        &pending.frame, local.x as u32, local.y as u32, local.width, local.height,
+    )
+    .to_image();
+
+    let loaded = adopt(
+        &state,
+        cropped,
+        format!("Screen region {} × {}", rect.width, rect.height),
+        Some(rect.to_string()),
+    );
+    // The pick happens in the overlay's context, so the main window is told
+    // rather than returned to.
+    let _ = app.emit_to("main", "picked", &loaded);
+    if let Some(w) = app.get_webview_window("main") {
+        let _ = w.set_focus();
+    }
+    Ok(Some(loaded))
+}
+
+#[tauri::command]
+fn cancel_pick(app: tauri::AppHandle, state: State<App>) {
+    close_overlay(&app);
+    *state.pending.lock().unwrap() = None;
+}
+
 /// Extract and hand back a picture. `full` skips the proxy.
 #[tauri::command]
 fn render(params: Params, full: bool, state: State<App>) -> Result<Rendered, String> {
@@ -261,7 +381,8 @@ fn main() {
         .plugin(tauri_plugin_dialog::init())
         .manage(App::default())
         .invoke_handler(tauri::generate_handler![
-            open_file, capture, screens, render, save, copy
+            open_file, capture, screens, render, save, copy,
+            begin_pick, overlay_frame, finish_pick, cancel_pick
         ])
         .setup(|app| {
             if let Some(w) = app.get_webview_window("main") {

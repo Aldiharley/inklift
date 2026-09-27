@@ -19,6 +19,6 @@ pub use capture::{Capturer, Monitor, monitor_at, monitor_for, virtual_bounds};
 pub use frame::{Frame, crop_global};
 pub use geometry::Rect;
 pub use overlay::pick_region;
-pub use selection::{Outcome, SelectionState};
+pub use selection::{Outcome, SelectionState, resolve_pick};
 #[cfg(target_os = "linux")]
 pub use x11::X11Capturer;

@@ -153,14 +153,10 @@ $("openBtn").addEventListener("click", async () => {
 
 $("grabBtn").addEventListener("click", async () => {
   try {
-    const screens = await invoke("screens");
-    if (!screens.length) throw new Error("no screens detected");
-    // v1 grabs the primary screen; the drag overlay is the CLI's job for now.
-    const m = /(-?\d+),(-?\d+),(\d+),(\d+)/.exec(screens[0]);
-    if (!m) throw new Error("could not read the screen geometry");
-    adopt(await invoke("capture", {
-      x: +m[1], y: +m[2], w: +m[3], h: +m[4],
-    }));
+    // The screen is grabbed before the overlay appears, so the overlay can
+    // never end up in its own capture. The result arrives as an event, since
+    // the drag finishes in the overlay's context rather than this one.
+    await invoke("begin_pick");
   } catch (e) { toast(String(e), true); }
 });
 
@@ -219,6 +215,11 @@ document.addEventListener("keydown", (e) => {
   if (e.key === "Enter" && loaded && !e.ctrlKey) el.copy.click();
 });
 document.addEventListener("keyup", (e) => { if (e.code === "Space") peek(false); });
+
+/* ── the overlay reports back ──────────────────────────────────────────── */
+if (window.__TAURI__.event) {
+  window.__TAURI__.event.listen("picked", (e) => { if (e.payload) adopt(e.payload); });
+}
 
 /* ── drag and drop a file onto the window ──────────────────────────────── */
 if (window.__TAURI__.event) {
