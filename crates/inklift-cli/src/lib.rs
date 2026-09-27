@@ -130,6 +130,10 @@ pub struct Config {
     pub input: PathBuf,
     pub output: PathBuf,
     pub mode: Output,
+    /// True when `output` was derived rather than asked for. `--both` needs to
+    /// know, because it writes two files and must base their names on an
+    /// explicit path when one was given.
+    pub output_is_default: bool,
     pub options: Options,
     pub quiet: bool,
     /// `None` runs everything locally. Set only by an explicit `--via`.
@@ -216,6 +220,7 @@ pub fn parse_args(argv: &[String]) -> Result<Config> {
     let input = input.ok_or_else(|| -> Box<dyn std::error::Error> {
         format!("no input image given\n\n{USAGE}").into()
     })?;
+    let output_is_default = output.is_none();
     let output = output.unwrap_or_else(|| default_output(&input));
 
     #[cfg(feature = "api")]
@@ -242,6 +247,7 @@ pub fn parse_args(argv: &[String]) -> Result<Config> {
         input,
         output,
         mode,
+        output_is_default,
         options,
         quiet,
         #[cfg(feature = "api")]
@@ -290,8 +296,11 @@ pub fn run(config: &Config) -> Result<Report> {
             written.push(config.output.clone());
         }
         Output::Both => {
-            let clear = with_suffix(&config.input, ".ink.png");
-            let white = with_suffix(&config.input, ".white.png");
+            // Two files, so their names are derived - but from whatever the
+            // user actually pointed at.
+            let base = if config.output_is_default { &config.input } else { &config.output };
+            let clear = with_suffix(base, ".ink.png");
+            let white = with_suffix(base, ".white.png");
             save_rgba(&clear, w, h, &result.to_rgba8())?;
             save_gray_on_white(&white, w, h, &result.to_gray_on_white8())?;
             written.push(clear);

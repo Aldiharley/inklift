@@ -69,3 +69,55 @@ fn a_missing_input_reports_an_error() {
     let cfg = parse_args(&[tmp("nope.png").to_string_lossy().into_owned()]).unwrap();
     assert!(run(&cfg).is_err());
 }
+
+/// `--both` writes two files, so it derives their names - but it must still
+/// derive them from an explicit -o when one is given. Quietly writing next to
+/// the input instead sends the results somewhere the user did not ask for.
+#[test]
+fn both_mode_honours_an_explicit_output_path() {
+    let src = tmp("c.png");
+    let dir = tmp("c-out");
+    std::fs::create_dir_all(&dir).unwrap();
+    write_page(&src);
+
+    let cfg = parse_args(&[
+        src.to_string_lossy().into_owned(),
+        "-o".into(),
+        dir.join("chosen.png").to_string_lossy().into_owned(),
+        "--both".into(),
+        "-q".into(),
+    ])
+    .unwrap();
+    let report = run(&cfg).expect("run should succeed");
+
+    assert_eq!(report.written.len(), 2);
+    for p in &report.written {
+        assert!(
+            p.starts_with(&dir),
+            "{p:?} was not written under the requested directory"
+        );
+        assert!(p.exists());
+    }
+    assert!(report.written.iter().any(|p| p.ends_with("chosen.ink.png")));
+    assert!(report.written.iter().any(|p| p.ends_with("chosen.white.png")));
+
+    let _ = std::fs::remove_file(src);
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+/// Without -o, the two files still land beside the input.
+#[test]
+fn both_mode_defaults_to_writing_beside_the_input() {
+    let src = tmp("d.png");
+    write_page(&src);
+    let mut cfg = parse_args(&[src.to_string_lossy().into_owned(), "-q".into()]).unwrap();
+    cfg.mode = Output::Both;
+
+    let report = run(&cfg).unwrap();
+
+    for p in &report.written {
+        assert_eq!(p.parent(), src.parent());
+        let _ = std::fs::remove_file(p);
+    }
+    let _ = std::fs::remove_file(src);
+}
