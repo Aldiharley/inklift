@@ -42,3 +42,11 @@ fn the_local_path_is_unaffected() {
     let cfg = parse_args(&args(&["a.png", "--white", "--min-area", "30"])).unwrap();
     assert_eq!(cfg.options.min_area, 30);
 }
+
+/// The screen-capture path is a separate feature from the hosted-model one;
+/// a default build must refuse it just as clearly.
+#[test]
+fn shot_is_not_advertised_in_an_offline_build() {
+    let help = parse_args(&args(&["--help"])).unwrap_err().to_string();
+    assert!(!help.contains("shot"), "offline build should not mention shot");
+}

@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/inklift-core", "crates/inklift-cli", "crates/inklift-api"]
+members = ["crates/inklift-core", "crates/inklift-cli", "crates/inklift-api", "crates/inklift-shot"]
 
 [workspace.package]
 version = "0.1.0"

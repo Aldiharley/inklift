@@ -82,6 +82,40 @@ against true stroke coverage — rather than golden images.
 
 Roughly 150 ms for a 900×500 page on one core, single-threaded and unoptimised.
 
+## Screen capture
+
+Behind the `shot` feature, off by default for the same reason as the hosted
+path: a stock build links no windowing, X11 or clipboard code at all.
+
+```bash
+cargo build --release --features inklift-cli/shot
+inklift shot                              # drag a box, Esc cancels
+inklift shot --region 200,150,500,300     # skip the overlay
+inklift shot --full --screen 1
+```
+
+The screen is captured *first* and the overlay drawn over that frozen frame,
+so the overlay never appears in its own screenshot. The result is written,
+copied to the clipboard, and the captured region printed to stdout as
+`X,Y,W,H` so it can be replayed with `--region`. Everything else goes to
+stderr, so the command pipes cleanly.
+
+`--keep-raw` also saves the untouched capture, which is what you want while
+still hunting for good `--k` and `--min-area` values.
+
+Capture is `x11rb` — pure Rust, no C libraries, no build script. `xcap` was
+the obvious choice and was rejected for Linux after reading its manifest: it
+needs the `libpipewire-0.3` system library, pulls two dependencies from git
+branches, and carries a `patch.crates-io` override for a security advisory.
+
+| Build | Size |
+|---|---|
+| `cargo build --release` | 1.5 MB |
+| `--features inklift-cli/shot` | 6.4 MB |
+
+Full spec, implementation plan and validation results:
+[`docs/screenshot-feature.md`](docs/screenshot-feature.md).
+
 ## Scoring
 
 `inklift-score` runs the DIBCO measures over a directory of results against a

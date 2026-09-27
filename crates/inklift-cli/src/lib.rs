@@ -6,6 +6,14 @@
 //! alpha on sRGB-encoded values, so opacity derived here is correct in the
 //! tools that will consume it.
 
+#[cfg(feature = "shot")]
+mod shot;
+#[cfg(feature = "shot")]
+pub use shot::{
+    SHOT_USAGE, ShotConfig, ShotOutcome, ShotReport, ShotSource, civil_from_epoch, parse_shot_args, raw_path,
+    run_shot,
+};
+
 mod dotenv;
 pub use dotenv::{env_or, parse_env_file, read_env_file};
 
