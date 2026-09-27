@@ -27,6 +27,7 @@ CAPTURE:
         --delay <SECS>    Wait before capturing, to open a menu first
         --keep-raw        Also save the untouched capture
         --no-clipboard    Do not copy the result to the clipboard
+        --hold-secs <N>   How long to keep serving the clipboard   [default: 3600]
 
 OUTPUT:
     -o, --output <PATH>   Output path            [default: shot-<timestamp>.png]
@@ -67,6 +68,9 @@ pub struct ShotConfig {
     pub clipboard: bool,
     pub keep_raw: bool,
     pub delay_secs: u64,
+    /// How long the detached holder keeps serving the clipboard. It also exits
+    /// as soon as something else is copied, so this is only an upper bound.
+    pub hold_secs: u64,
     pub quiet: bool,
 }
 
@@ -110,6 +114,7 @@ pub fn parse_shot_args(argv: &[String]) -> Result<ShotConfig> {
     let mut clipboard = true;
     let mut keep_raw = false;
     let mut delay_secs = 0u64;
+    let mut hold_secs = 3600u64;
     let mut quiet = false;
 
     let mut i = 0;
@@ -129,6 +134,7 @@ pub fn parse_shot_args(argv: &[String]) -> Result<ShotConfig> {
             "--full" => full = true,
             "--screen" => screen = Some(value("--screen")?.parse()?),
             "--delay" => delay_secs = value("--delay")?.parse()?,
+            "--hold-secs" => hold_secs = value("--hold-secs")?.parse()?,
             "--region" => {
                 let text = value("--region")?;
                 let rect: Rect = text
@@ -167,6 +173,7 @@ pub fn parse_shot_args(argv: &[String]) -> Result<ShotConfig> {
         clipboard,
         keep_raw,
         delay_secs,
+        hold_secs,
         quiet,
     })
 }
@@ -306,9 +313,17 @@ pub fn run_shot(config: &ShotConfig) -> Result<ShotOutcome> {
         }
     }
 
-    let clipboard = config
-        .clipboard
-        .then(|| inklift_shot::put_image(w as u32, h as u32, &result.to_rgba8()));
+    let clipboard = config.clipboard.then(|| {
+        let target = written.first().cloned().unwrap_or_else(|| config.output.clone());
+        if inklift_shot::needs_holder() {
+            // Setting the clipboard here and exiting would copy nothing: on
+            // X11 and Wayland the owning process serves the data, so it has to
+            // outlive this command.
+            spawn_clipboard_holder(&target, config.hold_secs)
+        } else {
+            inklift_shot::put_image(w as u32, h as u32, &result.to_rgba8())
+        }
+    });
 
     Ok(ShotOutcome::Captured(Box::new(ShotReport {
         region,
@@ -325,4 +340,49 @@ fn with_shot_suffix(path: &Path, suffix: &str) -> PathBuf {
     let mut p = path.parent().map(PathBuf::from).unwrap_or_default();
     p.push(format!("{}{suffix}", stem.unwrap_or_else(|| "shot".into())));
     p
+}
+
+/// Re-invoke ourselves as a detached process whose only job is to own the
+/// clipboard. It exits on its own once something else is copied, so repeated
+/// captures retire each other rather than piling up.
+pub fn spawn_clipboard_holder(image: &Path, hold_secs: u64) -> std::result::Result<(), String> {
+    let exe = std::env::current_exe().map_err(|e| format!("cannot find our own binary: {e}"))?;
+    std::process::Command::new(exe)
+        .arg("clipboard-hold")
+        .arg(image)
+        .arg("--hold-secs")
+        .arg(hold_secs.to_string())
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .map(|_| ())
+        .map_err(|e| format!("could not start the clipboard holder: {e}"))
+}
+
+/// The holder process: load the image, own the clipboard, serve until replaced.
+pub fn run_clipboard_hold(argv: &[String]) -> Result<()> {
+    let mut path: Option<PathBuf> = None;
+    let mut hold_secs = 3600u64;
+    let mut i = 0;
+    while i < argv.len() {
+        match argv[i].as_str() {
+            "--hold-secs" => {
+                i += 1;
+                hold_secs = argv
+                    .get(i)
+                    .ok_or("--hold-secs needs a value")?
+                    .parse()
+                    .map_err(|e| format!("--hold-secs: {e}"))?;
+            }
+            other if other.starts_with('-') => return Err(format!("unknown option {other}").into()),
+            other if path.is_none() => path = Some(PathBuf::from(other)),
+            other => return Err(format!("unexpected argument {other}").into()),
+        }
+        i += 1;
+    }
+    let path = path.ok_or("clipboard-hold needs an image path")?;
+    let (w, h, rgba) = crate::load_rgba(&path)?;
+    inklift_shot::hold_image(w, h, &rgba, std::time::Duration::from_secs(hold_secs))?;
+    Ok(())
 }

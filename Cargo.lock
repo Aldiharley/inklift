@@ -815,6 +815,7 @@ dependencies = [
 name = "inklift-cli"
 version = "0.1.0"
 dependencies = [
+ "arboard",
  "image",
  "inklift-api",
  "inklift-core",

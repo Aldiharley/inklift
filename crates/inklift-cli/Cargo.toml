@@ -27,3 +27,6 @@ image = { version = "0.25.9", default-features = false, features = ["png", "jpeg
 inklift-api = { version = "0.1.0", path = "../inklift-api", optional = true }
 inklift-core = { path = "../inklift-core" }
 inklift-shot = { version = "0.1.0", path = "../inklift-shot", optional = true }
+
+[dev-dependencies]
+arboard = "3.6.1"

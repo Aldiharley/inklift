@@ -10,7 +10,8 @@
 mod shot;
 #[cfg(feature = "shot")]
 pub use shot::{
-    SHOT_USAGE, ShotConfig, ShotOutcome, ShotReport, ShotSource, civil_from_epoch, parse_shot_args, raw_path,
+    SHOT_USAGE, ShotConfig, ShotOutcome, ShotReport, ShotSource, run_clipboard_hold,
+    spawn_clipboard_holder, civil_from_epoch, parse_shot_args, raw_path,
     run_shot,
 };
 
@@ -46,6 +47,17 @@ pub fn load_rgb(path: &Path) -> Result<[Grid; 3]> {
         }
     }
     Ok(planes)
+}
+
+/// Read an image as straight RGBA, transparency intact.
+///
+/// The counterpart to [`load_rgb`], which deliberately flattens onto white
+/// because the extraction pipeline wants paper, not holes. The clipboard wants
+/// the holes.
+pub fn load_rgba(path: &Path) -> Result<(u32, u32, Vec<u8>)> {
+    let img = image::open(path)?.to_rgba8();
+    let (w, h) = (img.width(), img.height());
+    Ok((w, h, img.into_raw()))
 }
 
 /// Write straight (non-premultiplied) RGBA as a PNG.

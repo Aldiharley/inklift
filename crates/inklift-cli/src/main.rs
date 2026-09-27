@@ -8,6 +8,9 @@ fn main() -> ExitCode {
     if argv.first().map(String::as_str) == Some("shot") {
         return run_shot_command(&argv[1..]);
     }
+    if argv.first().map(String::as_str) == Some("clipboard-hold") {
+        return run_clipboard_hold_command(&argv[1..]);
+    }
 
     let config = match parse_args(&argv) {
         Ok(c) => c,
@@ -108,5 +111,22 @@ fn run_shot_command(_argv: &[String]) -> ExitCode {
         "`shot` needs the screen-capture path, which this build does not include.\n\
          Rebuild with: cargo build --release --features inklift-cli/shot"
     );
+    ExitCode::FAILURE
+}
+
+#[cfg(feature = "shot")]
+fn run_clipboard_hold_command(argv: &[String]) -> ExitCode {
+    match inklift_cli::run_clipboard_hold(argv) {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(e) => {
+            eprintln!("inklift clipboard-hold: {e}");
+            ExitCode::FAILURE
+        }
+    }
+}
+
+#[cfg(not(feature = "shot"))]
+fn run_clipboard_hold_command(_argv: &[String]) -> ExitCode {
+    eprintln!("`clipboard-hold` needs the shot feature");
     ExitCode::FAILURE
 }

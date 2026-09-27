@@ -87,3 +87,23 @@ fn extraction_writes_a_transparent_png_and_a_white_one() {
         let _ = std::fs::remove_file(p);
     }
 }
+
+/// The clipboard carries RGBA, so the holder must read transparency back
+/// rather than flattening it the way `load_rgb` deliberately does.
+#[test]
+fn rgba_can_be_loaded_with_its_transparency_intact() {
+    let path = tmp("alpha-load.png");
+    let (w, h) = (4usize, 2usize);
+    let mut rgba = vec![0u8; w * h * 4];
+    rgba[0..4].copy_from_slice(&[10, 20, 30, 255]);
+    rgba[4..8].copy_from_slice(&[40, 50, 60, 128]);
+    inklift_cli::save_rgba(&path, w, h, &rgba).unwrap();
+
+    let (gw, gh, got) = inklift_cli::load_rgba(&path).unwrap();
+
+    assert_eq!((gw, gh), (4, 2));
+    assert_eq!(&got[0..4], &[10, 20, 30, 255]);
+    assert_eq!(&got[4..8], &[40, 50, 60, 128], "alpha must survive");
+    assert_eq!(got[3 + 8], 0, "a cleared pixel stays cleared");
+    let _ = std::fs::remove_file(&path);
+}

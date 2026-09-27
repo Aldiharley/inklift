@@ -14,7 +14,7 @@ mod selection;
 #[cfg(target_os = "linux")]
 mod x11;
 
-pub use clipboard::put_image;
+pub use clipboard::{hold_image, needs_holder, put_image};
 pub use capture::{Capturer, Monitor, monitor_at, monitor_for, virtual_bounds};
 pub use frame::{Frame, crop_global};
 pub use geometry::Rect;

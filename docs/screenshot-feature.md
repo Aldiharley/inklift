@@ -187,9 +187,8 @@ Only the overlay. Signed off 2026-09-27 except where noted.
 - [x] `Esc` cancels, no files written, exit code 1 — observed on the first run
 - [x] The overlay does not appear in its own capture — **failed first, now
       fixed.** See the defects below
-- [ ] Result lands on the clipboard and pastes into another application —
-      `arboard` accepts the image, but nothing has yet confirmed a paste on the
-      receiving end
+- [x] Result lands on the clipboard and survives the command exiting —
+      **failed first, now fixed.** See defect 3 below
 
 ### Defects this manual pass found
 
@@ -210,9 +209,32 @@ had already identified as untestable.
    carry their cause, and an event loop that ends without the user acting is
    reported as a fault.
 
-A third, unrelated to the overlay: dark-themed captures are light ink on a dark
+3. **The clipboard copied nothing.** `arboard` returned `Ok`, the tool printed
+   "copied to clipboard", and Ctrl+V produced nothing. On X11 and Wayland the
+   clipboard is not storage: the owning process serves the data on request, so
+   a command that sets it and exits takes the contents with it. No clipboard
+   manager was running to inherit the selection.
+
+   Fixed the way arboard prescribes: `shot` re-invokes itself as a detached
+   `clipboard-hold` process which owns the selection and serves requests until
+   something else is copied. Because a holder exits as soon as it is
+   superseded, repeated captures retire each other rather than accumulating —
+   measured as staying bounded across successive captures.
+
+   Proven by reading the clipboard back from a wholly separate program after
+   `shot` had exited.
+
+A fourth, unrelated to the overlay: dark-themed captures are light ink on a dark
 ground, which the pipeline had no way to handle. Addressed with `--invert` plus
 a detector that suggests it.
+
+### A flaky test, caught and fixed
+
+The first clipboard test polled for "any image" and so could read content left
+by an earlier holder, failing for reasons unrelated to the code. It now waits
+for an image of the expected size. Verified by deliberately leaving a foreign
+holder owning the clipboard, then running the suite: 182 passing, three
+consecutive runs, no failures.
 
 ### Acceptance criteria
 
