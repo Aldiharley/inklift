@@ -66,6 +66,22 @@ impl Extraction {
         self.ink_color
     }
 
+    /// Paint the same ink in a different colour.
+    ///
+    /// Only the pen colour changes; the opacity field is untouched, so this
+    /// costs nothing and loses nothing. It exists because the extracted pen is
+    /// the *real* one, which is usually dark — and dark ink is invisible on a
+    /// dark slide. Keeping opacity and colour apart is what makes that a swap
+    /// rather than a re-extraction.
+    pub fn with_ink_color(mut self, rgb: [f32; 3]) -> Self {
+        self.ink_color = [
+            rgb[0].clamp(0.0, 1.0),
+            rgb[1].clamp(0.0, 1.0),
+            rgb[2].clamp(0.0, 1.0),
+        ];
+        self
+    }
+
     pub fn width(&self) -> usize {
         self.alpha.width()
     }

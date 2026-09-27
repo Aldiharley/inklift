@@ -41,6 +41,7 @@ EXTRACTION (same meaning as the main command):
         --radius <PX>     Paper-estimate radius
         --feather <PX>    Soft-edge reach                      [default: 1]
         --invert          Ink is lighter than its background (dark themes)
+        --ink <COLOUR>    Repaint the ink: #RRGGBB, #RGB, black or white
     -q, --quiet           Suppress the summary line
     -h, --help            Show this message
 
@@ -65,6 +66,8 @@ pub struct ShotConfig {
     pub output: PathBuf,
     pub mode: Output,
     pub options: Options,
+    /// Override the pen colour the extractor found.
+    pub ink: Option<[f32; 3]>,
     pub clipboard: bool,
     pub keep_raw: bool,
     pub delay_secs: u64,
@@ -111,6 +114,7 @@ pub fn parse_shot_args(argv: &[String]) -> Result<ShotConfig> {
     let mut output: Option<PathBuf> = None;
     let mut mode = Output::Transparent;
     let mut options = Options::default();
+    let mut ink: Option<[f32; 3]> = None;
     let mut clipboard = true;
     let mut keep_raw = false;
     let mut delay_secs = 0u64;
@@ -148,6 +152,7 @@ pub fn parse_shot_args(argv: &[String]) -> Result<ShotConfig> {
             "--min-area" => options.min_area = value("--min-area")?.parse()?,
             "--feather" => options.feather = value("--feather")?.parse()?,
             "--invert" => options.invert = true,
+            "--ink" => ink = Some(inklift_core::parse_ink_color(&value("--ink")?)?),
             "--radius" => options.background_radius = Some(value("--radius")?.parse()?),
             other => {
                 return Err(format!("unknown option {other}\n\n{SHOT_USAGE}").into());
@@ -170,6 +175,7 @@ pub fn parse_shot_args(argv: &[String]) -> Result<ShotConfig> {
         output: output.unwrap_or_else(|| PathBuf::from(default_output_name())),
         mode,
         options,
+        ink,
         clipboard,
         keep_raw,
         delay_secs,
@@ -290,7 +296,11 @@ pub fn run_shot(config: &ShotConfig) -> Result<ShotOutcome> {
     if !config.quiet && !config.options.invert && inklift_core::looks_inverted(&planes) {
         eprintln!("note: this capture looks light-on-dark; try --invert");
     }
-    let result = inklift_core::extract(&planes, &config.options);
+    let mut result = inklift_core::extract(&planes, &config.options);
+    if let Some(rgb) = config.ink {
+        result = result.with_ink_color(rgb);
+    }
+    crate::warn_if_invisible(config.ink, config.mode, config.quiet);
     let (w, h) = (frame.width() as usize, frame.height() as usize);
 
     let mut written = Vec::new();

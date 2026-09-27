@@ -18,7 +18,7 @@ pub use alpha::ink_opacity;
 pub use background::{default_radius, estimate_background, normalize_illumination};
 pub use binarize::sauvola;
 pub use cleanup::despeckle;
-pub use color::{estimate_ink_color, luma};
+pub use color::{estimate_ink_color, luma, parse_ink_color};
 pub use extract::{
     Extraction, Options, alpha_from_gray_on_white, extract, looks_inverted,
 };

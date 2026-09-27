@@ -102,6 +102,7 @@ anything.
     ○ Grey ink on white
     ○ Both files
  ───────────────────────────────────────────────────
+  Ink: As written                                ▸
   Source: Screen text                            ▸
  ───────────────────────────────────────────────────
   Last result  ·  640 × 220  ·  2.9% ink
@@ -115,6 +116,19 @@ anything.
   About inklift
   Quit inklift
 ```
+
+**Ink submenu:**
+
+```
+    ● As written           the pen that was actually found
+    ○ Black
+    ○ White                for pasting onto a dark slide
+    ○ Custom…              #RRGGBB
+```
+
+Sits beside Output rather than under Source, because it is a property of what
+comes *out*, not of what went in. The default is never overridden silently: "As
+written" is the honest answer and stays selected until someone chooses otherwise.
 
 **Source submenu:**
 
@@ -315,6 +329,7 @@ off offers to break the best feature in the app.
 | `--min-area` | **Remove specks** | Slider, "Keep everything" ↔ "Remove printed noise" | Readout: "412 specks removed". When the source is a screen capture and the value exceeds ~15: "At this level, i-dots and full stops start to go." The documented trap deserves a named guard, not a tooltip. |
 | `--radius` | **Thickest stroke** | Numeric px field + **[Measure…]** | Reframed from "paper-estimate radius" to the physical thing it must exceed. Measure puts a crosshair on the canvas; drag a short line across the fattest stroke and the app sets `radius = ceil(len/2) + 2`. Helper: "Raise this if thick strokes come out hollow." |
 | `--invert` | **Light ink on a dark background** | Checkbox + banner (§6) | Named after the source, not the operation. A user can look at their screenshot and answer it; nobody can answer "invert?". |
+| `--ink` | **Ink colour** | Swatch row: As written / Black / White / custom | The extracted pen is the *real* one, which is usually dark — and dark ink is invisible on a dark slide. Because opacity and colour are stored separately, this is a swap with **no re-extraction**, so the preview is instant and lossless. Put it directly under the preview swatches: the user discovers it at the exact moment they drop their ink on a dark ground and cannot see it. |
 
 **Advanced** (collapsed): **Edge softness** (`--feather`), **Lighting detail**
 (`--window`), and the raw numeric value of every parameter next to its real flag
@@ -360,6 +375,18 @@ the message, causes ranked by likelihood, each actionable:
 > · Pick up may be too conservative — `[Show me at "Faint"]`
 > · Remove specks may be eating it — `[Keep everything]`
 > · There may not be ink in this region — `[Lift a different region]`
+
+**Invisible on the chosen ground.** When the preview ground is dark and the ink
+is dark (or the reverse), the canvas looks broken rather than wrong. Detect the
+collision — ink luminance within ~0.25 of the ground's — and offer the fix
+inline, since it costs nothing:
+
+> **This ink is almost the same tone as the background.** `[Paint it white]`
+> `[Paint it black]`
+
+Never auto-recolour. The extracted pen is a fact about the source, and
+overwriting it silently would make the tool untrustworthy about the one thing it
+is for.
 
 **Too-low resolution.** Estimate median stroke width from the raw *before*
 spending the extraction. Below 2 px:
@@ -442,3 +469,12 @@ No account, no tour, no tips carousel, no sample-file browser.
   Build it before shipping a full-screen item at all.
 - **Subtlest implementation hazard:** proxy parameter scaling (`s` for radii,
   `s²` for min-area). Get it wrong and the tuning UI lies convincingly.
+- **Found by building the onboarding art, not by reasoning:** the extracted ink
+  carries its own colour, which is usually dark, so "drop it anywhere" was false
+  as built — on a dark slide it nearly vanished and on a photographic backdrop it
+  was entirely invisible. Hence the ink-colour control above. Worth noting that
+  the architecture already supported the fix (opacity and colour are stored
+  apart); nothing *exposed* it. Recolouring cures the polarity problem but not a
+  partial-alpha one: on a maximally busy ground, ink whose opacity peaks near
+  0.65 stays faint whatever colour it is, and inflating the alpha to compensate
+  would be lying about the measurement.

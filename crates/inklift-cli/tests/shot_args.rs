@@ -113,3 +113,9 @@ fn shot_accepts_invert_for_dark_themed_captures() {
     assert!(!parse_shot_args(&[]).unwrap().options.invert);
     assert!(parse_shot_args(&args(&["--invert"])).unwrap().options.invert);
 }
+
+#[test]
+fn shot_accepts_an_ink_colour_for_pasting_onto_dark_slides() {
+    assert!(parse_shot_args(&[]).unwrap().ink.is_none());
+    assert_eq!(parse_shot_args(&args(&["--ink", "white"])).unwrap().ink.unwrap(), [1.0, 1.0, 1.0]);
+}

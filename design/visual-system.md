@@ -328,6 +328,15 @@ control demonstrates its own options.
 **Coverage readout.** `ink 12.4% · soft edge 2.1px · α 8-bit · 1712 × 984`.
 Measurement as luxury. Numbers snap — they never count up.
 
+**Ink swatches.** Directly beneath the ground swatches, and deliberately
+adjacent to them: a row of As written / Black / White / custom. The two rows
+together are the whole demonstration — *this* ink, on *that* ground — and
+putting them a pixel apart is what teaches the relationship. The "As written"
+swatch is filled with the pen colour actually extracted, so it differs per
+image; that is the point. When the chosen ink and ground are within ~0.25
+luminance of each other, the ink row shows a quiet caution rather than letting
+the canvas look broken.
+
 ## 6. Component specs
 
 ### 6.1 Tray popover

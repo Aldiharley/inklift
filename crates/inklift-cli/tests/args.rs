@@ -59,3 +59,21 @@ fn invert_is_opt_in_and_reaches_the_pipeline() {
     assert!(!parse_args(&args(&["a.png"])).unwrap().options.invert);
     assert!(parse_args(&args(&["a.png", "--invert"])).unwrap().options.invert);
 }
+
+#[test]
+fn ink_colour_defaults_to_the_pen_that_was_actually_found() {
+    assert!(parse_args(&args(&["a.png"])).unwrap().ink.is_none());
+}
+
+#[test]
+fn ink_colour_accepts_hex_and_names() {
+    let c = parse_args(&args(&["a.png", "--ink", "#1E266B"])).unwrap().ink.unwrap();
+    assert!((c[0] - 0x1E as f32 / 255.0).abs() < 1e-5);
+    assert_eq!(parse_args(&args(&["a.png", "--ink", "white"])).unwrap().ink.unwrap(), [1.0, 1.0, 1.0]);
+}
+
+#[test]
+fn a_bad_ink_colour_is_refused_before_any_work_happens() {
+    let err = parse_args(&args(&["a.png", "--ink", "chartreuse"])).unwrap_err().to_string();
+    assert!(err.to_lowercase().contains("#rrggbb"), "got {err}");
+}

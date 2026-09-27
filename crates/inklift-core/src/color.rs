@@ -64,3 +64,42 @@ pub fn estimate_ink_color(normalized_rgb: &[Grid; 3], mask: &Mask, core_radius: 
     }
     out
 }
+
+/// Parse a pen colour: `#RRGGBB`, `#RGB`, either without the hash, or one of a
+/// few names. Returned as `[0,1]` channels.
+///
+/// Deliberately a short list of names. A full CSS colour table invites
+/// "chartreuse" and returns nothing useful for ink.
+pub fn parse_ink_color(text: &str) -> Result<[f32; 3], String> {
+    let t = text.trim();
+    match t.to_ascii_lowercase().as_str() {
+        "black" => return Ok([0.0, 0.0, 0.0]),
+        "white" => return Ok([1.0, 1.0, 1.0]),
+        _ => {}
+    }
+    let hex = t.strip_prefix('#').unwrap_or(t);
+    let expand = |c: u8| -> u8 {
+        let v = (c as char).to_digit(16).unwrap_or(0) as u8;
+        v * 17 // #abc -> #aabbcc
+    };
+    let bytes = hex.as_bytes();
+    let rgb = match bytes.len() {
+        3 if bytes.iter().all(|b| (*b as char).is_ascii_hexdigit()) => {
+            [expand(bytes[0]), expand(bytes[1]), expand(bytes[2])]
+        }
+        6 if bytes.iter().all(|b| (*b as char).is_ascii_hexdigit()) => {
+            let p = |i: usize| u8::from_str_radix(&hex[i..i + 2], 16).unwrap_or(0);
+            [p(0), p(2), p(4)]
+        }
+        _ => {
+            return Err(format!(
+                "could not read {text:?} as a colour. Use #RRGGBB, #RGB, black or white."
+            ));
+        }
+    };
+    Ok([
+        rgb[0] as f32 / 255.0,
+        rgb[1] as f32 / 255.0,
+        rgb[2] as f32 / 255.0,
+    ])
+}

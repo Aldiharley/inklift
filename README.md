@@ -58,6 +58,30 @@ and a larger `--min-area`. If thick strokes come out hollow, raise `--radius`:
 it must exceed the half-width of the thickest stroke or that stroke is read as
 paper.
 
+## Repainting the ink
+
+The extracted pen colour is the *real* one, which is usually dark — so the
+result is invisible on a dark slide. `--ink` repaints it:
+
+```bash
+inklift photo.jpg --ink white          # for pasting onto a dark background
+inklift photo.jpg --ink "#1E266B"      # a specific pen
+inklift shot --ink white
+```
+
+Accepts `#RRGGBB`, `#RGB`, `black` or `white`. This is a **colour swap, not a
+re-extraction**: opacity and pen colour are stored separately, so nothing is
+recomputed and no quality is lost. A test pins that the alpha channel comes back
+bit-identical.
+
+It cures the polarity problem, not a faint one. Ink whose opacity peaks around
+0.65 — which is what a low-resolution source gives you — stays faint on a busy
+background whatever colour it is wearing. Inflating the alpha to compensate
+would be lying about the measurement, so it doesn't.
+
+A light `--ink` with `--white` is a contradiction, and the tool says so rather
+than writing a file that looks empty.
+
 ## Two exports, one decision
 
 `--white` writes **greyscale** ink on white, never a hard binary. The opacity is

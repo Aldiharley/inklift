@@ -98,6 +98,8 @@ OPTIONS:
         --feather <PX>    How far soft edges reach past the stroke    [default: 1]
         --invert          The ink is lighter than its background, as in a
                           screenshot of a dark-themed application
+        --ink <COLOUR>    Repaint the ink: #RRGGBB, #RGB, black or white.
+                          Use --ink white to paste onto a dark slide.
     -q, --quiet           Suppress the summary line
     -h, --help            Show this message
 
@@ -127,6 +129,8 @@ OPTIONS:
         --feather <PX>    How far soft edges reach past the stroke    [default: 1]
         --invert          The ink is lighter than its background, as in a
                           screenshot of a dark-themed application
+        --ink <COLOUR>    Repaint the ink: #RRGGBB, #RGB, black or white.
+                          Use --ink white to paste onto a dark slide.
     -q, --quiet           Suppress the summary line
     -h, --help            Show this message
 ";
@@ -159,6 +163,8 @@ pub struct Config {
     /// explicit path when one was given.
     pub output_is_default: bool,
     pub options: Options,
+    /// Override the pen colour the extractor found. `None` keeps the real one.
+    pub ink: Option<[f32; 3]>,
     pub quiet: bool,
     /// `None` runs everything locally. Set only by an explicit `--via`.
     #[cfg(feature = "api")]
@@ -182,6 +188,7 @@ pub fn parse_args(argv: &[String]) -> Result<Config> {
     let mut output: Option<PathBuf> = None;
     let mut mode = Output::Transparent;
     let mut options = Options::default();
+    let mut ink: Option<[f32; 3]> = None;
     let mut quiet = false;
     #[cfg(feature = "api")]
     let (mut via, mut model, mut prompt, mut api_key, mut timeout_secs) = (
@@ -214,6 +221,7 @@ pub fn parse_args(argv: &[String]) -> Result<Config> {
             "--min-area" => options.min_area = value("--min-area")?.parse()?,
             "--feather" => options.feather = value("--feather")?.parse()?,
             "--invert" => options.invert = true,
+            "--ink" => ink = Some(inklift_core::parse_ink_color(&value("--ink")?)?),
             "--radius" => options.background_radius = Some(value("--radius")?.parse()?),
             #[cfg(feature = "api")]
             "--via" => via = Some(value("--via")?.parse()?),
@@ -274,6 +282,7 @@ pub fn parse_args(argv: &[String]) -> Result<Config> {
         mode,
         output_is_default,
         options,
+        ink,
         quiet,
         #[cfg(feature = "api")]
         via,
@@ -313,7 +322,11 @@ pub fn run(config: &Config) -> Result<Report> {
     if !config.quiet && !config.options.invert && inklift_core::looks_inverted(&planes) {
         eprintln!("note: this image looks light-on-dark; try --invert");
     }
-    let result = inklift_core::extract(&planes, &config.options);
+    let mut result = inklift_core::extract(&planes, &config.options);
+    if let Some(rgb) = config.ink {
+        result = result.with_ink_color(rgb);
+    }
+    warn_if_invisible(config.ink, config.mode, config.quiet);
 
     let mut written = Vec::new();
     match config.mode {
@@ -391,4 +404,19 @@ fn run_via(config: &Config, via: &ViaConfig) -> Result<Report> {
         written: vec![config.output.clone()],
         source: format!("{}:{}", via.provider.name(), via.model),
     })
+}
+
+/// A light pen on a white ground is invisible, and the file looks empty rather
+/// than wrong. Say so once, rather than letting it be discovered later.
+pub fn warn_if_invisible(ink: Option<[f32; 3]>, mode: Output, quiet: bool) {
+    if quiet {
+        return;
+    }
+    let Some(rgb) = ink else { return };
+    if matches!(mode, Output::White | Output::Both) && inklift_core::luma(rgb) > 0.72 {
+        eprintln!(
+            "note: a light ink on a white background will be invisible. \
+             Use the transparent output, or a darker --ink."
+        );
+    }
 }
