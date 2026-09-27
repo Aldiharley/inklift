@@ -107,3 +107,9 @@ fn the_raw_capture_sits_beside_the_result() {
     );
     assert_eq!(inklift_cli::raw_path(Path::new("x.png")).to_str().unwrap(), "x.raw.png");
 }
+
+#[test]
+fn shot_accepts_invert_for_dark_themed_captures() {
+    assert!(!parse_shot_args(&[]).unwrap().options.invert);
+    assert!(parse_shot_args(&args(&["--invert"])).unwrap().options.invert);
+}

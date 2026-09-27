@@ -84,6 +84,8 @@ OPTIONS:
         --min-area <PX>   Discard connected components below this     [default: 8]
         --radius <PX>     Paper-estimate radius; must exceed the stroke half-width
         --feather <PX>    How far soft edges reach past the stroke    [default: 1]
+        --invert          The ink is lighter than its background, as in a
+                          screenshot of a dark-themed application
     -q, --quiet           Suppress the summary line
     -h, --help            Show this message
 
@@ -111,6 +113,8 @@ OPTIONS:
         --min-area <PX>   Discard connected components below this     [default: 8]
         --radius <PX>     Paper-estimate radius; must exceed the stroke half-width
         --feather <PX>    How far soft edges reach past the stroke    [default: 1]
+        --invert          The ink is lighter than its background, as in a
+                          screenshot of a dark-themed application
     -q, --quiet           Suppress the summary line
     -h, --help            Show this message
 ";
@@ -197,6 +201,7 @@ pub fn parse_args(argv: &[String]) -> Result<Config> {
             "--window" => options.sauvola_radius = value("--window")?.parse()?,
             "--min-area" => options.min_area = value("--min-area")?.parse()?,
             "--feather" => options.feather = value("--feather")?.parse()?,
+            "--invert" => options.invert = true,
             "--radius" => options.background_radius = Some(value("--radius")?.parse()?),
             #[cfg(feature = "api")]
             "--via" => via = Some(value("--via")?.parse()?),
@@ -291,6 +296,11 @@ pub fn run(config: &Config) -> Result<Report> {
     }
     let planes = load_rgb(&config.input)?;
     let (w, h) = (planes[0].width(), planes[0].height());
+    // Silently returning an empty page for a dark-themed source is the most
+    // confusing failure this tool has; say so instead.
+    if !config.quiet && !config.options.invert && inklift_core::looks_inverted(&planes) {
+        eprintln!("note: this image looks light-on-dark; try --invert");
+    }
     let result = inklift_core::extract(&planes, &config.options);
 
     let mut written = Vec::new();

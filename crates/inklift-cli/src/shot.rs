@@ -39,6 +39,7 @@ EXTRACTION (same meaning as the main command):
         --min-area <PX>   Discard components below this        [default: 8]
         --radius <PX>     Paper-estimate radius
         --feather <PX>    Soft-edge reach                      [default: 1]
+        --invert          Ink is lighter than its background (dark themes)
     -q, --quiet           Suppress the summary line
     -h, --help            Show this message
 
@@ -140,6 +141,7 @@ pub fn parse_shot_args(argv: &[String]) -> Result<ShotConfig> {
             "--window" => options.sauvola_radius = value("--window")?.parse()?,
             "--min-area" => options.min_area = value("--min-area")?.parse()?,
             "--feather" => options.feather = value("--feather")?.parse()?,
+            "--invert" => options.invert = true,
             "--radius" => options.background_radius = Some(value("--radius")?.parse()?),
             other => {
                 return Err(format!("unknown option {other}\n\n{SHOT_USAGE}").into());
@@ -278,6 +280,9 @@ pub fn run_shot(config: &ShotConfig) -> Result<ShotOutcome> {
     };
 
     let planes = frame.to_planes();
+    if !config.quiet && !config.options.invert && inklift_core::looks_inverted(&planes) {
+        eprintln!("note: this capture looks light-on-dark; try --invert");
+    }
     let result = inklift_core::extract(&planes, &config.options);
     let (w, h) = (frame.width() as usize, frame.height() as usize);
 

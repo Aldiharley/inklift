@@ -44,9 +44,15 @@ fn the_local_path_is_unaffected() {
 }
 
 /// The screen-capture path is a separate feature from the hosted-model one;
-/// a default build must refuse it just as clearly.
+/// a build without it must not advertise the subcommand. Checked against the
+/// usage line rather than the bare word, which also appears in the prose
+/// describing --invert.
+#[cfg(not(feature = "shot"))]
 #[test]
-fn shot_is_not_advertised_in_an_offline_build() {
+fn the_shot_subcommand_is_not_advertised_without_its_feature() {
     let help = parse_args(&args(&["--help"])).unwrap_err().to_string();
-    assert!(!help.contains("shot"), "offline build should not mention shot");
+    assert!(
+        !help.contains("inklift shot"),
+        "a build without the shot feature should not advertise the subcommand"
+    );
 }

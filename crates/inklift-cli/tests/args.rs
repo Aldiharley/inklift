@@ -53,3 +53,9 @@ fn help_is_requestable() {
     let err = parse_args(&args(&["--help"])).unwrap_err();
     assert!(err.to_string().contains("inklift"), "help text should name the tool");
 }
+
+#[test]
+fn invert_is_opt_in_and_reaches_the_pipeline() {
+    assert!(!parse_args(&args(&["a.png"])).unwrap().options.invert);
+    assert!(parse_args(&args(&["a.png", "--invert"])).unwrap().options.invert);
+}

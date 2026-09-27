@@ -22,6 +22,14 @@ pub struct Options {
     pub feather: usize,
     /// Erosion applied before sampling the pen colour.
     pub core_radius: usize,
+    /// The ink is *lighter* than what it sits on - a screenshot of a
+    /// dark-themed application, or chalk on a blackboard.
+    ///
+    /// The image is inverted before anything else runs, so the extracted ink
+    /// comes out dark. That keeps both exports usable: a light ink composited
+    /// onto white would be invisible. Colours invert with it, so white becomes
+    /// black and a coloured foreground shifts hue.
+    pub invert: bool,
 }
 
 impl Default for Options {
@@ -33,6 +41,7 @@ impl Default for Options {
             min_area: 8,
             feather: 1,
             core_radius: 1,
+            invert: false,
         }
     }
 }
@@ -135,6 +144,23 @@ pub fn alpha_from_gray_on_white(gray: &[u8], ink_luma: f32) -> Vec<f32> {
         .collect()
 }
 
+/// Whether an image looks like light ink on a dark ground.
+///
+/// Uses the median rather than the mean, so a small blaze of brightness - a
+/// selected line, a white dialog over a dark desktop - does not outvote the
+/// bulk of the image. Intended for suggesting `invert`, not for switching it
+/// on automatically: guessing wrong silently would be worse than doing nothing.
+pub fn looks_inverted(rgb: &[Grid; 3]) -> bool {
+    if rgb[0].is_empty() {
+        return false;
+    }
+    let mut luminance: Vec<f32> = (0..rgb[0].len())
+        .map(|i| (rgb[0].data()[i] + rgb[1].data()[i] + rgb[2].data()[i]) / 3.0)
+        .collect();
+    luminance.sort_by(|a, b| a.partial_cmp(b).unwrap_or(core::cmp::Ordering::Equal));
+    luminance[luminance.len() / 2] < 0.5
+}
+
 /// Run the classical extraction pipeline over a linear RGB image.
 ///
 /// Channels are expected in `[0, 1]`. Stages, in order: estimate the paper,
@@ -143,6 +169,21 @@ pub fn alpha_from_gray_on_white(gray: &[u8], ink_luma: f32) -> Vec<f32> {
 pub fn extract(rgb: &[Grid; 3], options: &Options) -> Extraction {
     let (w, h) = (rgb[0].width(), rgb[0].height());
     debug_assert!(rgb[1].same_shape(&rgb[0]) && rgb[2].same_shape(&rgb[0]));
+
+    // Everything downstream assumes dark ink on light paper. Rather than
+    // teach each stage about the other polarity, flip the input once and let
+    // the rest of the pipeline stay exactly as it is.
+    let flipped;
+    let rgb = if options.invert {
+        flipped = [
+            rgb[0].map(|v| 1.0 - v),
+            rgb[1].map(|v| 1.0 - v),
+            rgb[2].map(|v| 1.0 - v),
+        ];
+        &flipped
+    } else {
+        rgb
+    };
 
     let mut gray = Grid::new(w, h);
     for i in 0..gray.len() {

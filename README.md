@@ -103,6 +103,27 @@ stderr, so the command pipes cleanly.
 `--keep-raw` also saves the untouched capture, which is what you want while
 still hunting for good `--k` and `--min-area` values.
 
+### Dark themes
+
+Screenshots of dark-themed applications are light ink on a dark ground, the
+opposite of what the pipeline assumes. Without `--invert` the background is
+read as ink and the result is an unreadable smudge:
+
+```bash
+inklift shot --invert
+```
+
+The image is flipped before anything else runs, so the extracted ink comes out
+dark and both exports stay usable — a light ink composited onto white would be
+invisible. Colours invert with it, so white becomes black and coloured
+foregrounds shift hue.
+
+When a source looks light-on-dark and `--invert` was not given, both commands
+say so on stderr rather than silently returning a smudge.
+
+Leave `--min-area` at its default for screen text: raising it to 30, which
+suits a photographed page, eats i-dots and punctuation at typical font sizes.
+
 Capture is `x11rb` — pure Rust, no C libraries, no build script. `xcap` was
 the obvious choice and was rejected for Linux after reading its manifest: it
 needs the `libpipewire-0.3` system library, pulls two dependencies from git
