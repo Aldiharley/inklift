@@ -1,182 +1,280 @@
+<p align="center">
+  <img src="design/assets/readme-banner.jpg" width="1280"
+       alt="inklift — lift handwriting off any image onto a transparent background">
+</p>
+
 # inklift
 
-Lift handwriting off a photograph and onto a transparent or white background.
+**Extract handwriting from a photo or screenshot onto a transparent background — offline, in Rust, with a real alpha channel instead of a 1-bit mask.**
 
-Phase 0 of the plan in `research-brief.html`: the classical path. No model, no
-weights, no network, no fine-tuning. It ships today and stays in the codebase
-permanently as the fallback whenever the learned path (Phase 1) is unsure.
+[![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-2B6486.svg)](LICENSE)
+[![Rust 1.85+](https://img.shields.io/badge/Rust-1.85%2B-2B6486.svg)](https://www.rust-lang.org)
+[![Core dependencies: 0](https://img.shields.io/badge/core%20dependencies-0-2B6486.svg)](crates/inklift-core/Cargo.toml)
+[![Offline by default](https://img.shields.io/badge/network-off%20by%20default-2B6486.svg)](#offline-by-default-and-verifiably-so)
 
-```
+Point inklift at anything with writing in it — a phone photo of a notebook page,
+a scan, a region of your screen — and it hands back just the ink. The paper is
+gone, the strokes keep their own colour and their soft edges, and the result is
+a transparent PNG you can drop onto a slide, a dark-themed note, a coloured
+page or a photograph and have it look like it was written there.
+
+It runs entirely on your machine. A stock build links no HTTP client at all.
+
+```console
 $ inklift photo.jpg --both
-ink 2.9% of page, pen rgb(30, 38, 107)
+[local] ink 2.9% of page, pen rgb(14, 22, 90)
 wrote photo.ink.png
 wrote photo.white.png
 ```
 
-## What it does
+---
+
+## Why this exists
+
+Document binarization is a well-studied problem, and the published methods are
+good at it. But almost all of them answer a **yes/no** question — is this pixel
+ink or paper? — and emit a 1-bit mask. If you then use that mask as an alpha
+channel, which is the obvious thing to want, you get stair-stepped strokes that
+composite badly onto anything that is not the background you cut them from.
+
+inklift keeps the two decisions apart:
+
+- The **binary decision** chooses *which* pixels may carry ink.
+- A separate **opacity estimate** decides *how much* — derived from the
+  illumination-normalized image as `alpha = 1 − normalized`, which follows
+  directly from the compositing equation once the ink is darker than the paper.
+
+That is the whole trick, and it is what keeps stroke edges smooth. It lives in
+[`crates/inklift-core/src/alpha.rs`](crates/inklift-core/src/alpha.rs).
+
+The second thing that falls out of it: because opacity and pen colour are
+stored separately rather than baked into pixels, **recolouring the ink is a
+swap, not a re-extraction**. Nothing is recomputed and no quality is lost.
+
+## Features
+
+- **Transparent or white-background output.** Straight (non-premultiplied)
+  RGBA, or greyscale ink on white — never a hard binary.
+- **Soft alpha, not a 1-bit mask.** Antialiased stroke edges that composite
+  cleanly onto any background.
+- **Real pen colour, recoverable.** The extractor reports the actual ink colour
+  it found; `--ink` repaints it to anything you like without touching opacity.
+- **Offline by default.** The hosted-model path and the screen-capture path are
+  both Cargo features that are off unless you ask for them.
+- **Zero dependencies in the core.** `inklift-core` is plain `std`, so the same
+  code drops into a CLI, a Tauri backend, a WASM bundle or a mobile app.
+- **Live-screen region selection** (Linux/X11): drag a box on your actual
+  desktop, with no overlay window covering it.
+- **A DIBCO scoring harness** with FM, pseudo-FM, PSNR and DRD, so you can
+  measure changes instead of eyeballing them.
+- **A desktop app** (Tauri 2) with live retuning, hold-to-compare, and preview
+  backgrounds for checking the alpha channel.
+- Reads PNG, JPEG, WebP, BMP and TIFF — and decides the format from the file's
+  **magic bytes**, not its extension, because browsers save WebP as `.jpg`
+  constantly.
+
+## Install
+
+Requires **Rust 1.85 or newer** (the workspace is edition 2024).
+
+```bash
+git clone https://github.com/Aldiharley/inklift
+cd inklift
+cargo build --release -p inklift-cli
+```
+
+That produces two binaries in `target/release/`: `inklift` and `inklift-score`.
+No system libraries, no build script, no network access during the build.
+
+Optional features, each off by default:
+
+```bash
+# screen capture + live region selection (Linux/X11 only)
+cargo build --release -p inklift-cli --features shot
+
+# hosted-model comparison path (adds an HTTP client)
+cargo build --release -p inklift-cli --features api
+```
+
+## Quickstart
+
+The repository ships a sample page you can run immediately:
+
+```bash
+./target/release/inklift samples/messy.png --both
+```
+
+```
+[local] ink 2.9% of page, pen rgb(14, 22, 90)
+wrote samples/messy.ink.png
+wrote samples/messy.white.png
+```
+
+`samples/messy.ink.png` is the transparent version; `samples/messy.white.png`
+is greyscale ink on white.
+
+### Options
+
+```
+inklift <IMAGE> [OPTIONS]
+
+-o, --output <PATH>   Where to write the result   [default: <IMAGE>.ink.png]
+    --white           Ink on a white background instead of transparent
+    --both            Write both exports, suffixed .ink.png and .white.png
+    --k <FLOAT>       Sauvola k; raise it to keep less faint ink  [default: 0.20]
+    --window <PX>     Sauvola window radius                       [default: 12]
+    --min-area <PX>   Discard connected components below this     [default: 8]
+    --radius <PX>     Paper-estimate radius; must exceed the stroke half-width
+    --feather <PX>    How far soft edges reach past the stroke    [default: 1]
+    --invert          The ink is lighter than its background
+    --ink <COLOUR>    Repaint the ink: #RRGGBB, #RGB, black or white
+-q, --quiet           Suppress the summary line
+-h, --help            Show this message
+```
+
+Rules of thumb that come straight from how the pipeline works:
+
+- **Faint pencil** → lower `--k`.
+- **Blurry or upscaled photo** → lower `--k` and raise `--min-area`.
+- **Thick strokes coming out hollow** → raise `--radius`. It must exceed the
+  half-width of the thickest stroke, or that stroke gets read as paper.
+- **Screenshots of a dark theme** → add `--invert`. inklift detects the
+  light-on-dark case and says so on stderr rather than silently returning a
+  smudge, but it will not flip the image behind your back.
+
+### Recolouring the ink
+
+The pen colour inklift extracts is the *real* one, which is usually dark — and
+dark ink is invisible on a dark slide.
+
+```bash
+inklift photo.jpg --ink white        # for pasting onto a dark background
+inklift photo.jpg --ink "#1E266B"    # a specific pen
+```
+
+Accepts `#RRGGBB`, `#RGB`, `black` or `white`. Because opacity and colour are
+separate, this is a pure colour swap: a test asserts the alpha channel comes
+back **bit-identical** after a recolour
+([`tests/recolour.rs`](crates/inklift-core/tests/recolour.rs)).
+
+Worth knowing what this does *not* fix: it cures a polarity problem, not a
+faintness one. Ink whose opacity peaks around 0.65 — which is what a
+low-resolution source gives you — stays faint on a busy background whatever
+colour it is wearing. Inflating the alpha to compensate would be lying about
+the measurement, so inklift doesn't.
+
+### Two exports, one decision
+
+`--white` writes **greyscale** ink on white, never a hard binary. The opacity is
+still in there, and `alpha_from_gray_on_white` recovers it to within
+quantisation error — a test pins the worst round-trip error below 0.02. So
+shipping the white-background version first costs nothing and closes no doors.
+Thresholding to 1-bit is the only irreversible step available in this pipeline,
+and nothing here takes it.
+
+## How it works
 
 ```
 photo ─► estimate the paper ─► divide the lighting out ─► threshold locally
       ─► drop dust ─► soft opacity + pen colour ─► RGBA / grey-on-white
 ```
 
-The part that is not in the literature is the last step. Published document
-binarizers emit a 1-bit mask; setting `alpha = mask` gives stair-stepped strokes
-that composite badly onto anything. Here the binary decision only chooses *which*
-pixels may carry ink, while `alpha = 1 − normalized` decides *how much*, which is
-what keeps stroke edges smooth. See `research-brief.html` §04.
-
-## Layout
-
-| Crate | Dependencies | Role |
+| Stage | What happens | Source |
 |---|---|---|
-| `inklift-core` | **none** | The whole algorithm. Plain `std`, so it drops into a Tauri backend, a WASM bundle or a mobile app unchanged. |
-| `inklift-cli` | `image` | PNG/JPEG decoding and the command line. |
-| `inklift-api` | `ureq`, `serde_json` | Optional hosted-model path, for measuring the local one against it. Behind the `api` feature, so a default build does not link it. |
+| **Paper estimate** | Grey closing at a radius wider than a stroke, then three box passes to approximate a Gaussian. What survives is the lighting field with the ink removed. | [`background.rs`](crates/inklift-core/src/background.rs) |
+| **Illumination normalize** | Divide the image by that field. Bare paper becomes 1.0; solid ink approaches 0.0. Cancels shadows and uneven lighting. | [`background.rs`](crates/inklift-core/src/background.rs) |
+| **Local threshold** | Sauvola: `t = m · (1 + k · (s/R − 1))`. The standard-deviation term stops the threshold chasing noise across blank paper. | [`binarize.rs`](crates/inklift-core/src/binarize.rs) |
+| **Despeckle** | Iterative flood fill with eight-connectivity drops components below `--min-area`. No recursion, so a page-sized blob cannot blow the stack. | [`cleanup.rs`](crates/inklift-core/src/cleanup.rs) |
+| **Soft opacity** | The mask is dilated and blurred by `--feather` into a 0..1 gate, then multiplied by `1 − normalized`. This is the step that is not in the literature. | [`alpha.rs`](crates/inklift-core/src/alpha.rs) |
+| **Pen colour** | Sampled at a low percentile from the *eroded* core of the mask, never the feathered rim, where every pixel is part ink and part paper. | [`color.rs`](crates/inklift-core/src/color.rs) |
 
-Keeping the core dependency-free is deliberate — it is what makes Phase 2 (the
-Tauri desktop app) a wiring job rather than a port.
+Every filter is separable, and the box blur runs in linear time via prefix
+sums. On this machine — a Ryzen 9 5900X, single-threaded, release build — a
+900×500 page takes a median of **182 ms** wall clock over ten runs, including
+process start and PNG decode/encode.
 
-## Usage
+## Lift straight off the screen
 
-```
-inklift <IMAGE> [OPTIONS]
-
--o, --output <PATH>   Where to write the result   [default: <IMAGE>.ink.png]
-    --white           Ink on white instead of transparent
-    --both            Write both exports
-    --k <FLOAT>       Sauvola k; raise it to keep less faint ink  [default: 0.20]
-    --window <PX>     Sauvola window radius                       [default: 12]
-    --min-area <PX>   Discard connected components below this     [default: 8]
-    --radius <PX>     Paper-estimate radius; must exceed the stroke half-width
-    --feather <PX>    How far soft edges reach past the stroke    [default: 1]
--q, --quiet           Suppress the summary line
-```
-
-Faint pencil needs a lower `--k`. A blurry or upscaled photo needs a lower `--k`
-and a larger `--min-area`. If thick strokes come out hollow, raise `--radius`:
-it must exceed the half-width of the thickest stroke or that stroke is read as
-paper.
-
-## Repainting the ink
-
-The extracted pen colour is the *real* one, which is usually dark — so the
-result is invisible on a dark slide. `--ink` repaints it:
+Behind the `shot` feature, off by default:
 
 ```bash
-inklift photo.jpg --ink white          # for pasting onto a dark background
-inklift photo.jpg --ink "#1E266B"      # a specific pen
-inklift shot --ink white
-```
+cargo build --release -p inklift-cli --features shot
 
-Accepts `#RRGGBB`, `#RGB`, `black` or `white`. This is a **colour swap, not a
-re-extraction**: opacity and pen colour are stored separately, so nothing is
-recomputed and no quality is lost. A test pins that the alpha channel comes back
-bit-identical.
-
-It cures the polarity problem, not a faint one. Ink whose opacity peaks around
-0.65 — which is what a low-resolution source gives you — stays faint on a busy
-background whatever colour it is wearing. Inflating the alpha to compensate
-would be lying about the measurement, so it doesn't.
-
-A light `--ink` with `--white` is a contradiction, and the tool says so rather
-than writing a file that looks empty.
-
-## Two exports, one decision
-
-`--white` writes **greyscale** ink on white, never a hard binary. The opacity is
-still in there, so `alpha_from_gray_on_white` recovers it to within quantisation
-error — a test pins this. Shipping the white-background version first therefore
-costs nothing and closes no doors. Thresholding to 1-bit is the single
-irreversible step available in this pipeline, and nothing here takes it.
-
-## Build and test
-
-```bash
-cargo test                              # 104 tests, offline build
-cargo test --features inklift-cli/api   # 106 tests
-# Neither run touches the network.
-cargo build --release
-```
-
-Every function was written against a failing test first. The core's tests run
-against synthetic pages with known ground truth (`tests/common/mod.rs`), so
-assertions are about recovered quantities — IoU against the true ink, opacity
-against true stroke coverage — rather than golden images.
-
-Roughly 150 ms for a 900×500 page on one core, single-threaded and unoptimised.
-
-## Screen capture
-
-Behind the `shot` feature, off by default for the same reason as the hosted
-path: a stock build links no windowing, X11 or clipboard code at all.
-
-```bash
-cargo build --release --features inklift-cli/shot
-inklift shot                              # drag a box, Esc cancels
-inklift shot --region 200,150,500,300     # skip the drag
+inklift shot                            # drag a box, Esc cancels
+inklift shot --region 200,150,500,300   # skip the drag
 inklift shot --full --screen 1
+inklift shot --invert                   # dark-themed application
 ```
 
-The drag happens on the real screen: nothing covers it, so there is no overlay
-that could appear in its own screenshot. The only thing drawn is a 2px outline
-around the selection, torn down before the capture is taken. The result is written,
-copied to the clipboard, and the captured region printed to stdout as
-`X,Y,W,H` so it can be replayed with `--region`. Everything else goes to
-stderr, so the command pipes cleanly.
+**The drag happens on your live screen.** Nothing paints a copy of the desktop,
+so there is no overlay that could end up in its own screenshot. The only thing
+drawn is a thin outline around the selection — four override-redirect windows a
+few pixels thick — positioned *outside* the selection and torn down before the
+capture is taken.
 
-`--keep-raw` also saves the untouched capture, which is what you want while
-still hunting for good `--k` and `--min-area` values.
+That design replaced a full-screen overlay that rendered as a solid black
+rectangle under software GL, leaving the user dragging blind. The reasoning,
+the measurements and the invariant that replaced it are written up in
+[`docs/live-selection.md`](docs/live-selection.md).
 
-### Dark themes
+The result is written, copied to the clipboard, and the captured region printed
+to **stdout** as `X,Y,W,H` so it can be replayed with `--region`. Everything
+else goes to stderr, so the command pipes cleanly.
 
-Screenshots of dark-themed applications are light ink on a dark ground, the
-opposite of what the pipeline assumes. Without `--invert` the background is
-read as ink and the result is an unreadable smudge:
+On X11 and Wayland the clipboard is not storage — the owning process serves the
+data on request — so a command that sets it and exits copies nothing. `shot`
+re-invokes itself as a detached holder process that owns the selection until
+something else is copied.
+
+> **Platform status, stated plainly:** screen capture and live selection are
+> **X11 only** today. The capture layer is behind a `Capturer` trait so macOS
+> and Windows can slot in later, but no such backend exists yet, and native
+> Wayland has no client-side pointer grab — that path needs the XDG desktop
+> portal and is not implemented. The extraction pipeline itself is pure `std`
+> and platform-independent.
+
+## Desktop app
 
 ```bash
-inklift shot --invert
+cargo build --release -p inklift-gui
 ```
 
-The image is flipped before anything else runs, so the extracted ink comes out
-dark and both exports stay usable — a light ink composited onto white would be
-invisible. Colours invert with it, so white becomes black and coloured
-foregrounds shift hue.
+A Tauri 2 app with live retuning: every slider move re-extracts from the
+original pixels held in memory, so nothing goes back to disk or to the screen.
+Large images preview through a downscaled proxy — with every pixel-denominated
+parameter rescaled to match, radii by `s` and areas by `s²` — then refine at
+full resolution.
 
-When a source looks light-on-dark and `--invert` was not given, both commands
-say so on stderr rather than silently returning a smudge.
+It gives you sliders for pickup (Sauvola `k`), speck removal and thickest
+stroke; a light-on-dark toggle; ink swatches; four preview grounds — void,
+white, black and ink — for checking the alpha channel against something other
+than the colour you cut it from; hold-to-compare against the source; and
+Save / Copy.
 
-Leave `--min-area` at its default for screen text: raising it to 30, which
-suits a photographed page, eats i-dots and punctuation at typical font sizes.
+Building it needs the standard [Tauri 2 Linux
+prerequisites](https://v2.tauri.app/start/prerequisites/) (WebKitGTK and
+friends). The app sets `WEBKIT_DISABLE_DMABUF_RENDERER` for you when you have
+not set it yourself, because WebKitGTK's DMABUF renderer hands back a surface
+that never paints under virtualised or software GL.
 
-Capture is `x11rb` — pure Rust, no C libraries, no build script. `xcap` was
-the obvious choice and was rejected for Linux after reading its manifest: it
-needs the `libpipewire-0.3` system library, pulls two dependencies from git
-branches, and carries a `patch.crates-io` override for a security advisory.
+## Scoring: the DIBCO harness
 
-| Build | Size |
-|---|---|
-| `cargo build --release` | 1.5 MB |
-| `--features inklift-cli/shot` | 6.4 MB |
+`inklift-score` runs the DIBCO competition measures over a directory of results
+against a directory of ground truth. Files pair by name, ignoring case and a
+trailing `_GT` / `-gt` suffix, so a DIBCO benchmark folder works unchanged.
 
-Full spec, implementation plan and validation results:
-[`docs/screenshot-feature.md`](docs/screenshot-feature.md).
-
-## Scoring
-
-`inklift-score` runs the DIBCO measures over a directory of results against a
-directory of ground truth. Files pair by name, ignoring case and a trailing
-`_GT` / `-gt` suffix, so a DIBCO benchmark folder works unchanged.
+```bash
+inklift-score results/ groundtruth/
+```
 
 ```
-$ inklift-score results/ groundtruth/
 image                              FM     p-FM     PSNR      DRD
 ----------------------------------------------------------------
-page0                           92.01    99.68    21.98   1.5285
-page1                           91.02    99.77    21.95   1.6438
+page0                           97.41    99.87    26.66   0.4982
+page1                           96.50    99.88    25.82   0.6435
 ...
 ----------------------------------------------------------------
-mean of 6                       89.35    99.42    21.70   1.7460
+mean of 6                       95.86    99.92    25.62   0.6870
 ```
 
 ```
@@ -185,6 +283,7 @@ inklift-score <RESULTS_DIR> <GROUND_TRUTH_DIR> [OPTIONS]
     --csv <PATH>          Also write per-image scores as CSV
     --threshold <0-255>   Grey level below which a pixel counts as ink  [default: 128]
     --invert              Treat light pixels as ink instead of dark
+    --resize              Resample results to the ground-truth size first
 ```
 
 Higher is better for FM, p-FM and PSNR; lower for DRD. An exactly reproduced
@@ -194,137 +293,207 @@ printed underneath.
 ### How far to trust each number
 
 `f_measure`, `psnr` and `drd` follow the definitions printed in the competition
-reports, and the unit tests pin them against hand-computed cases — a single
-isolated false positive scores exactly DRD 1.0 per non-uniform block, one wrong
-pixel in 256 scores exactly 10·log10(256) dB. These are comparable with
+reports, and unit tests pin them against hand-computed cases — a single
+isolated false positive scores exactly DRD 1.0 per non-uniform block; one wrong
+pixel in 256 scores exactly 10·log₁₀(256) dB. Those are comparable with
 published tables.
 
-**The pseudo-F-measure is not.** There are two of them, and DIBCO says so
-explicitly:
+**The pseudo-F-measure is not**, and DIBCO itself is the reason there are two
+of them:
 
 - **p-FM** (H-DIBCO 2010, 2012) — pseudo-recall against a skeletonised ground
-  truth, combined with ordinary precision. Fully specified. This is what is
+  truth combined with ordinary precision. Fully specified, and what is
   implemented here.
 - **Fps** (DIBCO 2011, 2013 onward) — also uses a pseudo-*precision* with
   contour distance weights normalised by local stroke width. The competition
-  papers describe it only qualitatively; the construction lives in Ntirogiannis,
-  Gatos & Pratikakis, *IEEE TIP* 22(2):595–609, and is not reimplemented here.
+  papers describe it only qualitatively; the construction lives in
+  Ntirogiannis, Gatos & Pratikakis, *IEEE TIP* 22(2):595–609, and is **not**
+  reimplemented here.
 
 A second gap: the competitions used a semi-manually corrected skeleton, while
-this derives one automatically by Zhang-Suen thinning. So treat the p-FM column
-as comparable across your own runs, and never against a leaderboard.
+inklift derives one automatically by Zhang-Suen thinning. Treat the p-FM column
+as comparable across your own runs, and **never against a leaderboard**.
 
 It is still the most diagnostic column. p-FM stays high while FM falls when
 strokes are recovered but too thin or too fat; both fall together when strokes
 are actually broken or missed. That distinction tells you which knob to reach
 for.
 
-## Phase 0 baseline
+### Reproducing the numbers above
 
-On six synthetic pages with lighting gradients, cast shadows, blur and sensor
-noise, against a single global threshold on the same pages:
+The benchmark inputs are generated, not committed, so the whole chain is
+reproducible from the repository:
 
-| | FM | p-FM | PSNR | DRD |
-|---|---|---|---|---|
-| inklift Phase 0 | **89.35** | **99.42** | **21.70** | **1.75** |
-| global threshold | 61.37 | 61.37 | 14.94 | 36.97 |
+```bash
+python3 tools/make_fixtures.py bench   # needs numpy + pillow
+mkdir -p bench/results
+for f in bench/page*.png; do
+    ./target/release/inklift "$f" --white -o "bench/results/$(basename $f)" -q
+done
+./target/release/inklift-score bench/results bench/gt
+```
 
-The mean matters less than the spread. inklift ranges 85–92 across the six;
-the global threshold ranges 25.8–96.4, collapsing on exactly the pages with
-strong shadows. On the mildest page it beats inklift outright (96.4 to 91.0).
-That is the whole argument of the research brief in one table: consistency under
-unfamiliar degradation is the thing worth optimising, not the average.
+The generator is seeded, so the pages are deterministic for a given
+numpy/pillow pair.
 
-p-FM at 99.4 says the stroke medial axes are essentially all recovered, so the
-FM shortfall is edge thickness rather than missing ink — a `--feather` and `--k`
-question, not a fundamental one.
+**These are six synthetic 640×400 pages** with lighting gradients, cast
+shadows, blur and sensor noise — a sanity check on the harness, *not* a result.
+Real captures will score worse, and nothing here has been scored against a
+published DIBCO set. The next honest step for this project is a golden set of
+real captures; until that exists, treat these figures as a regression baseline
+and nothing more.
 
-These are synthetic pages, which is why they are a sanity check on the harness
-and not a result. Real captures will score worse.
+## Offline by default, and verifiably so
 
-## Comparing against a hosted model
+A stock build cannot reach the network, because the code that could is not
+linked into it. This is checked by inspecting the binary, not just asserted:
 
-**The default build cannot reach the network.** The hosted path sits behind a
-Cargo feature that is off unless asked for, so a stock `cargo build --release`
-links no HTTP client at all:
+```console
+$ cargo build --release -p inklift-cli
+$ strings -a target/release/inklift | grep -ci rustls
+0
+$ strings -a target/release/inklift | grep -ci generativelanguage
+0
+```
+
+Build with `--features api` and the same probes return thousands of hits. The
+same holds for the capture stack: a default binary contains no `x11rb` or
+`arboard` symbols at all.
+
+Measured on this machine (rustc 1.97.1, x86-64 Linux, unstripped):
 
 | Build | Size | Contains |
 |---|---|---|
-| `cargo build --release` | 1.5 MB | no HTTP client, no TLS, no provider URLs |
-| `cargo build --release --features inklift-cli/api` | 4.2 MB | adds `ureq` + `rustls` |
+| `cargo build --release -p inklift-cli` | 2.4 MB | no HTTP client, no TLS, no provider URLs, no capture stack |
+| `--features shot` | 3.1 MB | adds `x11rb` + `arboard` |
+| `--features api` | 5.1 MB | adds `ureq` + `rustls` |
 
-Verified by inspecting the binaries, not just by intent: the default one
-contains no provider hostname and no `rustls` symbol anywhere.
+In a default build the hosted flags are **refused with a rebuild instruction**,
+never silently ignored, and `--via` is not even listed in `--help`:
 
-In the default build the hosted flags are *refused* with instructions, never
-silently ignored, and `--via` is not even listed in `--help`. Build with the
-feature, then `--via` opts into sending the page to an image model so the two
-can be measured on the same images with the same scorer.
+```console
+$ inklift page.jpg --via gemini
+--via needs the hosted-model path, which this build does not include.
+Rebuild with: cargo build --release --features inklift-cli/api
+```
+
+## Optional: comparing against a hosted model
+
+The `api` feature exists for one purpose — measuring the local pipeline against
+a hosted image model on the same images with the same scorer.
 
 ```bash
-cp .env.example .env               # then fill in a key
-# or: export GEMINI_API_KEY=...
+cargo build --release -p inklift-cli --features api
+export GEMINI_API_KEY=...            # or put it in a .env beside the project
 inklift page.jpg --via gemini --white -o api/page.png
 
 ./compare.sh pages/ groundtruth/ gemini
 ```
 
 `compare.sh` runs both paths over a folder and prints two score tables plus
-per-image CSVs.
+per-image CSVs. Hosted results come back at whatever size the model chooses, so
+score them with `--resize`.
 
-| | `--via gemini` | `--via openai` |
+|  | `--via gemini` | `--via openai` |
 |---|---|---|
-| Default model | `gemini-3-pro-image` (Nano Banana Pro) | `gpt-image-2` |
+| Default model | `gemini-3-pro-image` | `gpt-image-2` |
 | Endpoint | `generateContent` | `/v1/images/edits` |
 | Real alpha channel | no | yes, via `background=transparent` |
 | Key variable | `GEMINI_API_KEY` | `OPENAI_API_KEY` |
 
-Keys come from the environment, or from a `.env` beside the project — copy
-`.env.example` and fill it in. A real exported variable always wins over the
-file, and an empty entry is ignored rather than shadowing one that is set.
-`.env` is gitignored.
+Keys come from the environment or from a `.env` beside the project; a real
+exported variable always wins over the file, and an empty entry is ignored
+rather than shadowing one that is set. Passing `--model` or `--prompt` without
+`--via` is an error rather than a no-op, so you can never believe you called a
+model you did not.
 
-Override with `--model`, `--prompt`, `--api-key`, `--timeout`. Passing `--model`
-or `--prompt` without `--via` is an error rather than a no-op, so you can never
-believe you called a model you did not.
+> **What is and is not verified here.** Request construction, response parsing,
+> both providers' error shapes, base64 against the RFC vectors, and key
+> resolution are all covered by tests. **The network call itself is not** — no
+> live request has ever been made from this code. The first real call may still
+> surface an auth, quota or schema surprise.
 
-The instruction sent with the image is written to fight the documented failure
-mode — asked to "clean up" a page, these models re-render the text in their own
-hand — by telling the model in as many ways as possible to preserve the exact
-strokes. Whether that is enough is the thing being measured. Override it with
-`--prompt` and try your own.
+## Limitations
 
-Hosted results come back at whatever size the model chooses, so score them with
-`--resize`, which resamples to the ground-truth dimensions first. That the flag
-is needed at all is itself a finding: you cannot overlay the output on the
-original to see what changed.
+Stated up front, because finding them yourself is worse:
 
-### What is and is not verified here
-
-Request construction, response parsing, both providers' error shapes, base64
-against the RFC vectors, and key resolution are all covered by tests. **The
-network call itself is not** — no live request has been made from this code. The
-first real call may still surface an auth, quota or schema surprise. Everything
-around it is built so that when it does, the error says what happened.
-
-## Known limits
-
-- Strokes under ~2 px cannot be recovered; the information is not there. The
-  low-resolution sample shows this as a washed-out pen colour, which is honest
-  behaviour rather than a bug.
-- Assumes roughly neutral paper. Channels are normalized by a shared luminance
-  background, which costs one closing instead of three; strongly tinted paper
-  would need per-channel estimation.
-- Pencil on textured paper and highlighter are the known hard cases, as flagged
-  in the brief.
-- Pixels are processed in the space the file stores them in, with no gamma
-  conversion. Division cancels a multiplicative light field either way, and
+- **Strokes under ~2 px cannot be recovered.** The information is not there.
+  The low-resolution sample shows this as a washed-out pen colour, which is
+  honest behaviour rather than a bug.
+- **Screen capture and live selection are X11 only.** No macOS, no Windows, no
+  native Wayland. See the platform note above.
+- **Assumes roughly neutral paper.** All three channels are normalized by a
+  shared luminance background, which costs one closing instead of three;
+  strongly tinted paper would need per-channel estimation.
+- **Pencil on textured paper and highlighter are the known hard cases.**
+- **No gamma conversion.** Pixels are processed in the space the file stores
+  them in. Division cancels a multiplicative light field either way, and
   viewers composite alpha on sRGB values, so opacity derived here is correct
-  where it is used. `tests/io.rs` pins this decision.
+  where it is used — but it is a deliberate decision, pinned by
+  [`tests/io.rs`](crates/inklift-cli/tests/io.rs), not an oversight.
+- **Accuracy has only been measured on synthetic pages.** There is no
+  benchmark here against a published DIBCO set or against real handwriting at
+  scale.
+- **No CI yet.** The suite passes locally in all four build configurations;
+  there is no automated pipeline enforcing that on every push.
 
-## Next
+## Project layout
 
-Phase 0 is only half done until there is a **golden set**: 200+ of your own real
-captures, scored with the DIBCO metrics (FM, p-FM, PSNR, DRD). That set is what
-tells you whether Phase 1's learned model is actually an improvement. Without it
-you are tuning blind.
+| Crate | Dependencies | Role |
+|---|---|---|
+| [`inklift-core`](crates/inklift-core) | **none** | The whole algorithm. Plain `std`, so it drops into a Tauri backend, a WASM bundle or a mobile app unchanged. |
+| [`inklift-cli`](crates/inklift-cli) | `image` | Image decoding, the `inklift` command line, and the `inklift-score` harness. |
+| [`inklift-shot`](crates/inklift-shot) | `x11rb`, `arboard` | X11 capture, live region selection, clipboard. Behind the `shot` feature. |
+| [`inklift-api`](crates/inklift-api) | `ureq`, `serde_json` | Optional hosted-model path. Behind the `api` feature. |
+| [`inklift-gui`](crates/inklift-gui) | `tauri` | The desktop app. |
+
+Keeping the core dependency-free is deliberate: it is what makes the desktop
+app a wiring job rather than a port.
+
+## Build and test
+
+```bash
+cargo test                                 # 202 tests, offline build
+cargo test --features inklift-cli/api      # 203 tests
+cargo test --features inklift-cli/shot     # 225 tests
+cargo test --features inklift-cli/api,inklift-cli/shot   # 227 tests
+```
+
+No run touches the network. Counts measured on this checkout with rustc 1.97.1;
+they move as tests are added, so treat them as a floor rather than a promise.
+Note that `cargo test` covers the whole workspace, the Tauri app included, so
+it needs the GUI prerequisites above; `cargo test -p inklift-core -p
+inklift-cli` does not.
+
+Every function was written against a failing test first. The core's tests run
+against synthetic pages with known ground truth
+([`tests/common/mod.rs`](crates/inklift-core/tests/common/mod.rs)), so the
+assertions are about recovered quantities — opacity against true stroke
+coverage, estimated pen against the real one — rather than golden images.
+
+The pure logic in `inklift-shot` (rectangle maths, the drag state machine,
+frame cropping) runs headless, which is what keeps the part that genuinely
+needs a display down to "does a window appear and do clicks reach it".
+
+## Further reading
+
+- [`docs/screenshot-feature.md`](docs/screenshot-feature.md) — the capture
+  feature's spec, implementation plan, and the defects a manual pass found that
+  the automated suite could not.
+- [`docs/live-selection.md`](docs/live-selection.md) — why the full-screen
+  overlay was removed and what replaced it.
+- [`design/visual-system.md`](design/visual-system.md) — the design system
+  behind the desktop app.
+
+## License
+
+Licensed under the **Apache License, Version 2.0**. See [`LICENSE`](LICENSE)
+for the full text and [`NOTICE`](NOTICE) for attribution.
+
+<!--
+Suggested GitHub topics:
+rust, handwriting, handwriting-extraction, background-removal, image-processing,
+computer-vision, binarization, document-binarization, sauvola, alpha-channel,
+transparent-png, png, screenshot, screen-capture, x11, tauri, cli, offline,
+privacy, no-dependencies, dibco, ocr-preprocessing, image-segmentation, linux
+-->
