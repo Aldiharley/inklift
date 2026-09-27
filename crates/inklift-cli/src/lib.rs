@@ -29,6 +29,33 @@ use inklift_core::Grid;
 
 pub type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 
+/// Open an image, deciding what it is from its contents.
+///
+/// The filename is not evidence. `image::open` picks a decoder from the path
+/// extension, and browsers save WebP as `.jpg` and `.jfif` constantly, so a
+/// perfectly good image reached the JPEG decoder and failed with
+/// `Illegal start bytes:5249` — 0x5249 being "RI", the head of a RIFF
+/// container.
+///
+/// The bytes are read instead. Note that `with_guessed_format` *keeps* the
+/// extension's guess when the content identifies nothing, which is how a PHP
+/// file named `.jpg` still reached the JPEG decoder and produced
+/// `Illegal start bytes:3C3F` ("<?"). So the format is required to have come
+/// from the content: every format this reads has magic bytes, and anything
+/// without them is not an image we can open.
+pub fn open_image(path: &Path) -> Result<image::DynamicImage> {
+    let file = std::fs::File::open(path)?;
+    let reader = image::ImageReader::new(std::io::BufReader::new(file)).with_guessed_format()?;
+    if reader.format().is_none() {
+        return Err(format!(
+            "{} is not an image this build can read (PNG, JPEG, WebP, BMP or TIFF)",
+            path.display()
+        )
+        .into());
+    }
+    Ok(reader.decode()?)
+}
+
 /// Read an image as three `[0, 1]` channel planes.
 ///
 /// Transparency is composited over white rather than discarded. Simply
@@ -36,7 +63,7 @@ pub type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 /// underneath - usually black - which then reads as solid ink. Treating clear
 /// as paper is both what a viewer shows and what the pipeline expects.
 pub fn load_rgb(path: &Path) -> Result<[Grid; 3]> {
-    let img = image::open(path)?.to_rgba8();
+    let img = open_image(path)?.to_rgba8();
     let (w, h) = (img.width() as usize, img.height() as usize);
     let mut planes = [Grid::new(w, h), Grid::new(w, h), Grid::new(w, h)];
     for (i, px) in img.pixels().enumerate() {
@@ -55,7 +82,7 @@ pub fn load_rgb(path: &Path) -> Result<[Grid; 3]> {
 /// because the extraction pipeline wants paper, not holes. The clipboard wants
 /// the holes.
 pub fn load_rgba(path: &Path) -> Result<(u32, u32, Vec<u8>)> {
-    let img = image::open(path)?.to_rgba8();
+    let img = open_image(path)?.to_rgba8();
     let (w, h) = (img.width(), img.height());
     Ok((w, h, img.into_raw()))
 }

@@ -67,8 +67,8 @@ All existing extraction flags (`--k`, `--min-area`, `--white`, `--both`,
 | Flag | Meaning |
 |---|---|
 | *(none)* | Interactive: dim the screen, drag a region |
-| `--region X,Y,W,H` | Skip the overlay, capture exactly this rectangle |
-| `--full` | Skip the overlay, capture the whole screen |
+| `--region X,Y,W,H` | Skip the drag, capture exactly this rectangle |
+| `--full` | Skip the drag, capture the whole screen |
 | `--screen N` | Which monitor, for `--full` |
 | `--delay SECS` | Wait before capturing, to let a menu open |
 | `-o PATH` | Output base path |
@@ -77,8 +77,10 @@ All existing extraction flags (`--k`, `--min-area`, `--white`, `--both`,
 
 ### Interactive behaviour
 
-1. Grab the whole screen **first**, then show the overlay. Capturing before the
-   overlay appears is what stops the overlay from appearing in its own capture.
+1. **Hide first, capture last.** The user drags on the live screen — nothing
+   paints a copy of it — and the capture is taken once the outline is torn
+   down. Superseded the old "capture first, show second" rule when the
+   full-screen overlay was removed; see `docs/live-selection.md`.
 2. Display the frozen frame dimmed; the selection rectangle shows it undimmed.
 3. Drag to select. Live `W × H` readout near the cursor.
 4. Release confirms. `Esc` or right-click cancels with exit code 1 and no files.
@@ -113,7 +115,7 @@ crates/inklift-shot/src/
   selection.rs  drag state machine                         PURE - fully tested
   frame.rs      captured pixels -> inklift-core Grids      PURE - fully tested
   capture.rs    trait Capturer + X11Capturer (x11rb)       thin, needs a display
-  overlay.rs    winit + softbuffer event pump              thin, needs a display
+  live.rs       x11 pointer grab + 4 outline windows       thin, needs a display
   clipboard.rs  arboard wrapper                            thin
 ```
 
@@ -128,7 +130,7 @@ state.drag(x, y);
 let rect = state.release();   // or state.cancel()
 ```
 
-`overlay.rs` only translates winit events into those calls. This keeps every
+`live.rs` only translates X11 events into those calls. This keeps every
 rule that can be wrong — normalising a backwards drag, the 8×8 minimum, clamping
 to screen bounds, Esc handling — in code that runs headless in CI. The part that
 genuinely needs a human shrinks to "does a window appear and do clicks reach it".
@@ -140,7 +142,8 @@ trait Capturer { fn monitors(&self) -> Result<Vec<Monitor>>; fn grab(&self, m: &
 ```
 
 `X11Capturer` ships now. macOS and Windows implement the same trait later,
-likely via `xcap`. The overlay is already cross-platform via winit.
+likely via `xcap`. The live selector is X11-only and would need a per-platform
+equivalent; Wayland has no client-side pointer grab and needs the portal.
 
 **Stated honestly:** only the X11 path can be tested on this machine. The macOS
 and Windows paths will be structurally correct but unverified until run on
@@ -158,7 +161,7 @@ Ordered so that every step is verifiable before the next depends on it.
 | 4 | `Capturer` trait + `X11Capturer` | smoke only |
 | 5 | Clipboard put-image | smoke only |
 | 6 | `shot` subcommand wiring, output paths, exit codes, stdout contract | yes, via `--region` |
-| 7 | `overlay.rs` winit pump | manual |
+| 7 | `live.rs` X11 pump | `tests/live_pick.rs`, driven with XTEST |
 
 Steps 1–3 and 6 are the bulk of the logic and are fully covered. Step 7 is
 deliberately the thinnest possible layer.
@@ -295,3 +298,18 @@ are effectively instant. Worth revisiting if full-screen becomes a common path.
 | X11 `GetImage` pixel format varies by visual | Assert depth and bytes-per-pixel at runtime, fail loudly rather than produce garbage colours |
 | Wayland users get nothing | Detected and reported with a clear message; XDG portal path is future work |
 | macOS/Windows unverified | Stated in the spec, not implied to work |
+
+---
+
+## Superseded: the full-screen overlay
+
+The interactive path described above originally raised a full-screen window
+showing a frozen screenshot and let the user drag over the picture. Both the CLI
+and the GUI did this; the GUI's version rendered as a solid black rectangle over
+the whole display on virtualised GL, and the user could not see anything they
+were selecting.
+
+It has been replaced by selection on the live screen — see
+[`live-selection.md`](live-selection.md) for the evidence, the design, and the
+invariant that replaces "capture first, show second". `overlay.rs`, `winit` and
+`softbuffer` are gone with it; `pick_region` no longer exists.

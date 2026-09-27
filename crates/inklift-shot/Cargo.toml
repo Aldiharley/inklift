@@ -9,6 +9,8 @@ license.workspace = true
 [dependencies]
 arboard = "3.6.1"
 inklift-core = { version = "0.1.0", path = "../inklift-core" }
-softbuffer = "0.4"
-winit = "0.30"
 x11rb = { version = "0.14.0", features = ["randr"] }
+
+[dev-dependencies]
+# xtest drives a real pointer drag in tests/live_pick.rs
+x11rb = { version = "0.14.0", features = ["randr", "xtest"] }

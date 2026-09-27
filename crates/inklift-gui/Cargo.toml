@@ -14,14 +14,20 @@ path = "src/main.rs"
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
+inklift-cli = { path = "../inklift-cli" }
 inklift-core = { path = "../inklift-core" }
 inklift-shot = { path = "../inklift-shot" }
 tauri = { version = "2", features = [] }
 tauri-plugin-dialog = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp", "bmp", "tiff"] }
 base64 = "0.22"
+
+[dev-dependencies]
+serde_json = "1"
+inklift-shot = { path = "../inklift-shot" }
+image = { version = "0.25", default-features = false, features = ["png"] }
 
 [features]
 default = []

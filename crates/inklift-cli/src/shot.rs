@@ -237,10 +237,6 @@ pub fn run_shot(config: &ShotConfig) -> Result<ShotOutcome> {
     let capturer = X11Capturer::new()?;
     let monitors = capturer.monitors()?;
 
-    // An interactive pick already holds a clean capture of the screen, taken
-    // before the overlay existed. Re-grabbing would photograph the overlay.
-    let mut prepicked: Option<(inklift_shot::Frame, Rect)> = None;
-
     let region = match config.source {
         ShotSource::Region(r) => r,
         ShotSource::Full(index) => {
@@ -257,31 +253,19 @@ pub fn run_shot(config: &ShotConfig) -> Result<ShotOutcome> {
             monitor.bounds
         }
         ShotSource::Interactive => {
-            // Capture first, then show the overlay over the frozen image.
-            // The other order puts the overlay into its own screenshot.
-            let screen = monitors
-                .iter()
-                .find(|m| m.primary)
-                .or_else(|| monitors.first())
-                .ok_or("no screens detected")?;
-            let origin = screen.bounds;
-            let full = capturer.grab(&origin)?;
-            let (outcome, full) =
-                inklift_shot::pick_region(full, origin, (MIN_SELECTION, MIN_SELECTION))?;
-            match outcome {
-                inklift_shot::Outcome::Selected(rect) => {
-                    prepicked = Some((full, origin));
-                    rect
-                }
+            // The user drags on the real screen; nothing covers it, so there is
+            // no overlay that could end up in its own screenshot. The capture
+            // is taken afterwards, once the outline has been torn down.
+            let bounds =
+                inklift_shot::virtual_bounds(&monitors).ok_or("no screens detected")?;
+            match inklift_shot::pick_live_region(bounds, MIN_SELECTION)? {
+                inklift_shot::Outcome::Selected(rect) => rect,
                 _ => return Ok(ShotOutcome::Cancelled),
             }
         }
     };
 
-    let frame = match prepicked {
-        Some((full, origin)) => inklift_shot::crop_global(&full, origin, region)?,
-        None => capturer.grab(&region)?,
-    };
+    let frame = capturer.grab(&region)?;
 
     // Only now that the capture succeeded do any files get created.
     let raw = if config.keep_raw {

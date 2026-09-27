@@ -107,3 +107,122 @@ fn rgba_can_be_loaded_with_its_transparency_intact() {
     assert_eq!(got[3 + 8], 0, "a cleared pixel stays cleared");
     let _ = std::fs::remove_file(&path);
 }
+
+/// A file's contents decide what it is. Its name is a hint, and often a wrong
+/// one: browsers routinely save WebP with a `.jpg` or `.jfif` name, and that is
+/// precisely the file a user drops on this tool.
+///
+/// `image::open` picks its decoder from the path extension, so such a file went
+/// to the JPEG decoder and came back as
+/// `Format error decoding Jpeg: Error parsing image. Illegal start bytes:5249`
+/// — 0x5249 being "RI", the start of a RIFF/WebP container. Unreadable to a
+/// user, and wrong: the file is a perfectly good image.
+#[test]
+fn a_png_named_jpg_loads_anyway() {
+    let path = tmp("misnamed.jpg");
+    let (w, h) = (6usize, 4usize);
+    let rgba: Vec<u8> = (0..w * h).flat_map(|_| [200u8, 100, 50, 255]).collect();
+    // written as a PNG, named .jpg
+    save_rgba(&path.with_extension("png"), w, h, &rgba).expect("write png");
+    std::fs::rename(path.with_extension("png"), &path).expect("rename to .jpg");
+
+    let planes = load_rgb(&path).expect("a PNG must load whatever it is called");
+    assert_eq!(planes[0].width(), w);
+    let _ = std::fs::remove_file(&path);
+}
+
+#[test]
+fn a_webp_named_jpg_loads_anyway() {
+    let path = tmp("misnamed-webp.jpg");
+    let (w, h) = (8u32, 6u32);
+    let rgb: Vec<u8> = (0..w * h).flat_map(|_| [30u8, 60, 90]).collect();
+    let mut bytes: Vec<u8> = Vec::new();
+    image::codecs::webp::WebPEncoder::new_lossless(&mut std::io::Cursor::new(&mut bytes))
+        .encode(&rgb, w, h, image::ExtendedColorType::Rgb8)
+        .expect("encode webp");
+    assert_eq!(&bytes[..2], b"RI", "fixture must really be a RIFF container");
+    std::fs::write(&path, &bytes).expect("write");
+
+    let planes = load_rgb(&path).expect("a WebP must load even when named .jpg");
+    assert_eq!(planes[0].width(), w as usize);
+    let _ = std::fs::remove_file(&path);
+}
+
+/// The file picker offers these extensions, so the build must be able to read
+/// them. Advertising a format the decoder was not compiled with is a promise
+/// the app cannot keep.
+#[test]
+fn every_format_the_picker_offers_can_actually_be_decoded() {
+    use image::ImageFormat::*;
+    for (fmt, name) in [(Png, "png"), (Jpeg, "jpeg"), (WebP, "webp"), (Bmp, "bmp"), (Tiff, "tiff")] {
+        assert!(
+            fmt.reading_enabled(),
+            "the picker offers .{name} but this build cannot decode it"
+        );
+    }
+}
+
+/// A file that is not an image at all must say so.
+///
+/// `with_guessed_format` keeps the extension's guess when the bytes identify
+/// nothing, so a text file named `.jpg` still reached the JPEG decoder and came
+/// back as `Illegal start bytes:3C3F`. That is the decoder's internal
+/// vocabulary, not an explanation: 0x3C3F is "<?", the start of a PHP file.
+#[test]
+fn a_file_that_is_not_an_image_says_so_plainly() {
+    let path = tmp("not-an-image.jpg");
+    std::fs::write(&path, b"<?php echo 'hello'; ?>").expect("write");
+
+    let err = load_rgb(&path).expect_err("a PHP file is not an image").to_string();
+    let _ = std::fs::remove_file(&path);
+
+    assert!(
+        !err.contains("Illegal start bytes"),
+        "the decoder's internal error reached the user: {err}"
+    );
+    assert!(
+        err.to_lowercase().contains("image"),
+        "the message should tell the user it is not a readable image: {err}"
+    );
+}
+
+/// `image::open` is banned in this workspace.
+///
+/// It chooses a decoder from the path extension, which is a claim made by
+/// whoever named the file rather than by the file. That reads the wrong
+/// decoder for the WebP-named-`.jpg` files browsers produce, and reports the
+/// failure in the decoder's private vocabulary. `open_image` above is the one
+/// way in.
+#[test]
+fn nothing_in_the_workspace_calls_image_open() {
+    // Built at runtime so this test does not match its own source.
+    let needle = format!("image{}open(", "::");
+
+    fn walk(dir: &std::path::Path, needle: &str, hits: &mut Vec<String>) {
+        let Ok(entries) = std::fs::read_dir(dir) else { return };
+        for e in entries.filter_map(std::result::Result::ok) {
+            let p = e.path();
+            if p.is_dir() {
+                if p.file_name().is_some_and(|n| n == "target" || n == ".git") {
+                    continue;
+                }
+                walk(&p, needle, hits);
+            } else if p.extension().is_some_and(|x| x == "rs") {
+                let Ok(body) = std::fs::read_to_string(&p) else { continue };
+                for (i, line) in body.lines().enumerate() {
+                    if line.contains(needle) && !line.trim_start().starts_with("//") {
+                        hits.push(format!("{}:{}", p.display(), i + 1));
+                    }
+                }
+            }
+        }
+    }
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent().unwrap().parent().unwrap().join("crates");
+    let mut hits = Vec::new();
+    walk(&root, &needle, &mut hits);
+    assert!(
+        hits.is_empty(),
+        "image::open picks its decoder from the filename; use open_image instead: {hits:?}"
+    );
+}

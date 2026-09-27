@@ -5,8 +5,27 @@
 // run on a proxy so a drag stays fluid; a full-resolution pass follows once the
 // user stops moving.
 
+// Everything below needs the injected API. Read it through a guard rather than
+// straight off the global: when it is missing (withGlobalTauri off, a plugin not
+// registered) an unguarded `window.__TAURI__.core` throws here, on line one, and
+// every listener below it is never attached — a window that renders perfectly
+// and ignores every click, with nothing in the log. Say so on the page instead.
+if (!window.__TAURI__ || !window.__TAURI__.core) {
+  document.addEventListener("DOMContentLoaded", () => {
+    const p = document.createElement("p");
+    p.textContent =
+      "inklift cannot reach its backend: the Tauri API was not injected into " +
+      "this window. The app needs withGlobalTauri enabled in tauri.conf.json.";
+    p.setAttribute("style",
+      "position:fixed;inset:auto 16px 16px;z-index:99;margin:0;padding:14px 16px;" +
+      "border-radius:12px;font:13px/1.5 system-ui,sans-serif;" +
+      "background:#3A1518;color:#FFDCDC;box-shadow:0 0 0 1px rgba(255,120,120,.35)");
+    document.body.append(p);
+  });
+  throw new Error("inklift: window.__TAURI__ missing — is withGlobalTauri on?");
+}
+
 const { invoke } = window.__TAURI__.core;
-const dialog = window.__TAURI__.dialog;
 
 const $ = (id) => document.getElementById(id);
 const el = {
@@ -142,10 +161,8 @@ function adopt(info) {
 
 $("openBtn").addEventListener("click", async () => {
   try {
-    const path = await dialog.open({
-      multiple: false,
-      filters: [{ name: "Images", extensions: ["png", "jpg", "jpeg", "bmp", "tif", "tiff", "webp"] }],
-    });
+    // Rust owns the picker; see pick_open's comment for why it cannot live here.
+    const path = await invoke("pick_open");
     if (!path) return;
     adopt(await invoke("open_file", { path }));
   } catch (e) { toast(String(e), true); }
@@ -162,9 +179,8 @@ $("grabBtn").addEventListener("click", async () => {
 
 el.save.addEventListener("click", async () => {
   try {
-    const path = await dialog.save({
-      defaultPath: output === "white" ? "ink-on-white.png" : "ink.png",
-      filters: [{ name: "PNG", extensions: ["png"] }],
+    const path = await invoke("pick_save", {
+      defaultName: output === "white" ? "ink-on-white.png" : "ink.png",
     });
     if (!path) return;
     await invoke("save", { path, params: params(), white: output === "white" });
@@ -216,17 +232,51 @@ document.addEventListener("keydown", (e) => {
 });
 document.addEventListener("keyup", (e) => { if (e.code === "Space") peek(false); });
 
-/* ── the overlay reports back ──────────────────────────────────────────── */
-if (window.__TAURI__.event) {
-  window.__TAURI__.event.listen("picked", (e) => { if (e.payload) adopt(e.payload); });
-}
+/* ── events: the overlay's report, and a dropped file ──────────────────── */
+//
+// `listen` is a plugin command and so passes through tauri's ACL, unlike this
+// app's own commands. A refused listener rejects a promise nobody awaits, which
+// is silent — and it is how the overlay hands back a region, so losing it loses
+// the feature. Await it and report, so a missing grant shows up at startup
+// rather than after a drag the user then has to repeat.
+(async () => {
+  const { listen } = window.__TAURI__.event;
+  const wired = [];
+  const failed = [];
 
-/* ── drag and drop a file onto the window ──────────────────────────────── */
-if (window.__TAURI__.event) {
-  window.__TAURI__.event.listen("tauri://drag-drop", async (e) => {
-    const p = e.payload && e.payload.paths && e.payload.paths[0];
-    if (!p) return;
-    try { adopt(await invoke("open_file", { path: p })); }
-    catch (err) { toast(String(err), true); }
-  });
-}
+  try {
+    await listen("picked", (e) => { if (e.payload) adopt(e.payload); });
+    wired.push("picked");
+  } catch (e) {
+    toast("The overlay cannot report back: " + e, true);
+  }
+
+  try {
+    await listen("pick-failed", (e) => toast(String(e.payload), true));
+    wired.push("pick-failed");
+  } catch (e) {
+    failed.push("pick-failed: " + e);
+  }
+
+  try {
+    await listen("tauri://drag-drop", async (e) => {
+      const p = e.payload && e.payload.paths && e.payload.paths[0];
+      if (!p) return;
+      try { adopt(await invoke("open_file", { path: p })); }
+      catch (err) { toast(String(err), true); }
+    });
+    wired.push("drag-drop");
+  } catch (e) {
+    // Not fatal — the Open button still works — but it must not vanish into a
+    // console nobody reads. The readiness line below names what did attach.
+    failed.push("drag-drop: " + e);
+  }
+
+  // Everything above is attached by now. Saying so turns a frontend that dies
+  // on its first line — a window that renders and ignores every click — from an
+  // invisible failure into one line in the log.
+  invoke("ui_ready", {
+    what: "main window, listeners [" + wired.join(" ") + "]" +
+      (failed.length ? " UNAVAILABLE: " + failed.join("; ") : ""),
+  }).catch(() => {});
+})();

@@ -6,7 +6,7 @@
 //! The backend keeps the untouched source image in memory for the lifetime of a
 //! result. That is what makes retuning free: every slider move re-extracts from
 //! the original pixels rather than going back to the screen or the disk, which
-//! is both faster and the only way the overlay cannot contaminate a capture.
+//! is both faster and the only way a capture cannot be contaminated.
 
 use std::sync::Mutex;
 
@@ -14,6 +14,7 @@ use base64::Engine;
 use inklift_core::{Grid, Options, extract, looks_inverted, parse_ink_color};
 use serde::{Deserialize, Serialize};
 use tauri::{Emitter, Manager, State};
+use tauri_plugin_dialog::DialogExt;
 
 /// Longest edge of the preview proxy. Chosen against the measured budget:
 /// roughly 150 ms for 900×500 on one core, which keeps a dragged slider fluid.
@@ -24,20 +25,9 @@ struct Source {
     image: image::RgbaImage,
 }
 
-/// A capture taken and held while the user drags a box over it.
-///
-/// The frame is grabbed *before* the overlay appears and cropped afterwards —
-/// never re-grabbed. Going back to the screen once the overlay is up
-/// photographs the overlay, which is exactly the bug the CLI shipped with once.
-struct Pending {
-    frame: image::RgbaImage,
-    origin: inklift_shot::Rect,
-}
-
 #[derive(Default)]
 struct App {
     source: Mutex<Option<Source>>,
-    pending: Mutex<Option<Pending>>,
 }
 
 /// What the UI sends back on every slider move.
@@ -143,7 +133,16 @@ fn adopt(state: &State<App>, image: image::RgbaImage, label: String, region: Opt
 
 #[tauri::command]
 fn open_file(path: String, state: State<App>) -> Result<Loaded, String> {
-    let img = image::open(&path).map_err(|e| format!("could not open that image: {e}"))?;
+    // One implementation, shared with the CLI: it decides the format from the
+    // file's bytes rather than its name.
+    let img = inklift_cli::open_image(std::path::Path::new(&path)).map_err(|e| {
+        // Both outcomes are logged for the same reason the pick path logs
+        // its own: without a line here, "I opened a file and got an error"
+        // leaves nothing to look at afterwards.
+        eprintln!("inklift: could not open {path}: {e}");
+        format!("could not open that image: {e}")
+    })?;
+    eprintln!("inklift: opened {path} ({} × {})", img.width(), img.height());
     let name = std::path::Path::new(&path)
         .file_name()
         .map(|s| s.to_string_lossy().into_owned())
@@ -177,112 +176,101 @@ fn screens() -> Result<Vec<String>, String> {
         .collect())
 }
 
-/// The frozen screen the overlay draws, plus where it sits.
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct Overlay {
-    png: String,
-    x: i32,
-    y: i32,
-    width: u32,
-    height: u32,
-}
+/// A selection smaller than this on either axis is a misclick, not a capture.
+const MIN_SELECTION: u32 = 8;
 
-/// Grab the screen, then raise a full-screen window over the frozen image.
+/// Let the user drag a region on the real screen.
 ///
-/// This order is the whole trick: capture first, show second.
+/// Returns at once; the drag runs on its own thread and the result arrives as
+/// a `picked` event. A blocking pointer grab must never run on the thread that
+/// serves this command, because that is the GTK main thread: it would freeze
+/// the event loop for the whole drag, and `hide()`/`show()` below dispatch
+/// *through* that loop, so they would never be processed.
 #[tauri::command]
-fn begin_pick(app: tauri::AppHandle, state: State<App>) -> Result<(), String> {
-    use inklift_shot::{Capturer, X11Capturer};
-    let cap = X11Capturer::new()?;
-    let monitors = cap.monitors()?;
-    let screen = monitors
-        .iter()
-        .find(|m| m.primary)
-        .or_else(|| monitors.first())
-        .ok_or("no screens detected")?;
-
-    let frame = cap.grab(&screen.bounds)?;
-    let img = image::RgbaImage::from_raw(frame.width(), frame.height(), frame.to_rgba8())
-        .ok_or("capture did not produce a usable image")?;
-    *state.pending.lock().unwrap() = Some(Pending { frame: img, origin: screen.bounds });
-
-    if let Some(w) = app.get_webview_window("overlay") {
-        let _ = w.close();
-    }
-    tauri::WebviewWindowBuilder::new(&app, "overlay", tauri::WebviewUrl::App("overlay.html".into()))
-        .title("inklift — select a region")
-        .decorations(false)
-        .always_on_top(true)
-        .skip_taskbar(true)
-        .resizable(false)
-        .position(screen.bounds.x as f64, screen.bounds.y as f64)
-        .inner_size(screen.bounds.width as f64, screen.bounds.height as f64)
-        .build()
-        .map_err(|e| format!("could not open the selection overlay: {e}"))?;
+fn begin_pick(app: tauri::AppHandle) -> Result<(), String> {
+    let handle = app.clone();
+    std::thread::spawn(move || {
+        if let Err(e) = run_pick(&handle) {
+            eprintln!("inklift: pick failed: {e}");
+            // A failure the user caused must reach the user.
+            let _ = handle.emit_to("main", "pick-failed", e);
+        }
+    });
     Ok(())
 }
 
-/// The overlay asks for the frozen frame once it is up.
-#[tauri::command]
-fn overlay_frame(state: State<App>) -> Result<Overlay, String> {
-    let guard = state.pending.lock().unwrap();
-    let p = guard.as_ref().ok_or("no capture is pending")?;
-    Ok(Overlay {
-        png: png_data_uri(p.frame.width(), p.frame.height(), p.frame.as_raw())?,
-        x: p.origin.x,
-        y: p.origin.y,
-        width: p.origin.width,
-        height: p.origin.height,
-    })
-}
+/// Hide, select on the live screen, capture, restore.
+///
+/// The old design's rule was "capture first, show second" — a frozen frame the
+/// overlay could not contaminate. This is the mirror of it: **hide first,
+/// capture last**. Nothing paints a copy of the desktop, so the only thing that
+/// could end up wrongly inside a capture is our own window, and it is hidden
+/// before the grab and shown again on every path out.
+fn run_pick(app: &tauri::AppHandle) -> Result<(), String> {
+    use inklift_shot::{Capturer, Outcome, X11Capturer, pick_live_region, virtual_bounds};
 
-fn close_overlay(app: &tauri::AppHandle) {
-    if let Some(w) = app.get_webview_window("overlay") {
-        let _ = w.close();
+    let cap = X11Capturer::new()?;
+    let bounds = virtual_bounds(&cap.monitors()?).ok_or("no screens detected")?;
+
+    let main = app.get_webview_window("main");
+    if let Some(w) = &main {
+        let _ = w.hide();
+        // hide() returns once the event loop has queued the change, not once
+        // the server has unmapped the window — and certainly not once the
+        // desktop beneath has repainted. Two waits, because they are two
+        // different unknowns: poll for the unmap, which is observable, then
+        // allow a fixed settle for the repaint, which is not.
+        //
+        // The settle is measured, not guessed: on this machine a covered
+        // region read clean 36-60 ms after an unmap, so 140 ms is roughly
+        // twice the worst observed. Other tools land in the same range for the
+        // same reason (scrot 80 ms, gnome-screenshot 200 ms with a comment
+        // admitting there is no reliable signal to wait on instead).
+        for _ in 0..100 {
+            if !w.is_visible().unwrap_or(false) {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
     }
-}
+    std::thread::sleep(std::time::Duration::from_millis(140));
 
-/// Two raw corners in, a cropped source out. All the rules about what a drag
-/// means live in `inklift_shot::resolve_pick`, where they are unit-tested.
-#[tauri::command]
-fn finish_pick(
-    x0: i32, y0: i32, x1: i32, y1: i32,
-    app: tauri::AppHandle, state: State<App>,
-) -> Result<Option<Loaded>, String> {
-    close_overlay(&app);
-    let pending = state.pending.lock().unwrap().take().ok_or("no capture is pending")?;
+    let outcome = pick_live_region(bounds, MIN_SELECTION);
 
-    let Some(rect) = inklift_shot::resolve_pick(x0, y0, x1, y1, &pending.origin, 8) else {
-        return Ok(None); // a misclick, not a failure
+    // Before anything can fail: a worker that dies with the window hidden looks
+    // to the user like the app vanished.
+    if let Some(w) = &main {
+        let _ = w.show();
+    }
+
+    let rect = match outcome? {
+        Outcome::Selected(rect) => rect,
+        _ => {
+            eprintln!("inklift: pick cancelled");
+            return Ok(());
+        }
     };
 
-    // Crop what we already hold. Never grab again: the overlay is on screen.
-    let local = rect.relative_to(&pending.origin);
-    let cropped = image::imageops::crop_imm(
-        &pending.frame, local.x as u32, local.y as u32, local.width, local.height,
-    )
-    .to_image();
+    let frame = cap.grab(&rect)?;
+    let img = image::RgbaImage::from_raw(frame.width(), frame.height(), frame.to_rgba8())
+        .ok_or("capture did not produce a usable image")?;
 
+    let state = app.state::<App>();
     let loaded = adopt(
         &state,
-        cropped,
+        img,
         format!("Screen region {} × {}", rect.width, rect.height),
         Some(rect.to_string()),
     );
-    // The pick happens in the overlay's context, so the main window is told
-    // rather than returned to.
-    let _ = app.emit_to("main", "picked", &loaded);
-    if let Some(w) = app.get_webview_window("main") {
+    // This emit IS the handoff: swallowing its error would lose a capture the
+    // user already made, with nothing to show why.
+    app.emit_to("main", "picked", &loaded)
+        .map_err(|e| format!("could not hand the capture to the window: {e}"))?;
+    if let Some(w) = &main {
         let _ = w.set_focus();
     }
-    Ok(Some(loaded))
-}
-
-#[tauri::command]
-fn cancel_pick(app: tauri::AppHandle, state: State<App>) {
-    close_overlay(&app);
-    *state.pending.lock().unwrap() = None;
+    eprintln!("inklift: picked {rect}");
+    Ok(())
 }
 
 /// Extract and hand back a picture. `full` skips the proxy.
@@ -376,13 +364,70 @@ fn copy(params: Params, state: State<App>) -> Result<(), String> {
     inklift_shot::put_image(w, h, &rgba)
 }
 
+/// The file pickers live here rather than in JavaScript.
+///
+/// `withGlobalTauri` injects only tauri's own `bundle.global.js`; a plugin's
+/// `api-iife.js` — the file that would define `window.__TAURI__.dialog` — is
+/// never injected by anything in the Rust toolchain. Reaching for it from a
+/// bundler-less frontend yields `undefined`, and the button fails the moment it
+/// is pressed. Asking Rust keeps one version of the truth and needs no ACL
+/// grant, since the app's own commands are not gated.
+///
+/// `command(async)` puts these on a worker thread: the blocking picker would
+/// deadlock the event loop on the main one.
+#[tauri::command(async)]
+fn pick_open(app: tauri::AppHandle) -> Option<String> {
+    app.dialog()
+        .file()
+        .add_filter("Images", &["png", "jpg", "jpeg", "bmp", "tif", "tiff", "webp"])
+        .blocking_pick_file()
+        .and_then(|p| p.into_path().ok())
+        .map(|p| p.to_string_lossy().into_owned())
+}
+
+#[tauri::command(async)]
+fn pick_save(app: tauri::AppHandle, default_name: String) -> Option<String> {
+    app.dialog()
+        .file()
+        .set_file_name(&default_name)
+        .add_filter("PNG", &["png"])
+        .blocking_save_file()
+        .and_then(|p| p.into_path().ok())
+        .map(|p| p.to_string_lossy().into_owned())
+}
+
+/// The frontend calls this once every listener is attached. It exists because a
+/// script that throws on its first line leaves a window that renders correctly
+/// and ignores every click, with nothing anywhere to say so. One line in the
+/// log is the difference between a five-minute fix and a debugging round.
+#[tauri::command]
+fn ui_ready(what: String) {
+    eprintln!("inklift: {what} wired up");
+}
+
 fn main() {
+    // WebKitGTK's DMABUF renderer hands back a surface that never paints under
+    // virtualised or software GL: the window maps, shows its background, and
+    // nothing else is ever composited. Measured on this machine, a WebKit window
+    // came out 88.8% near-black with the renderer on and 0% with it off — image,
+    // text and all. The selection overlay that first exposed this is gone, but
+    // the main window is the same kind of surface and would fail the same way.
+    //
+    // Set before any GTK or WebKit call, and only when the user has expressed no
+    // preference of their own.
+    #[cfg(target_os = "linux")]
+    if std::env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").is_none() {
+        // SAFETY: single-threaded here — this runs before the runtime, the
+        // webview, and any thread this program spawns.
+        unsafe { std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1") };
+    }
+
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .manage(App::default())
         .invoke_handler(tauri::generate_handler![
             open_file, capture, screens, render, save, copy,
-            begin_pick, overlay_frame, finish_pick, cancel_pick
+            begin_pick, pick_open, pick_save, ui_ready
         ])
         .setup(|app| {
             if let Some(w) = app.get_webview_window("main") {

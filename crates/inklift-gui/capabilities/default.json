@@ -1,0 +1,11 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "What the inklift window may ask the backend for. Tauri's ACL gates every plugin command, so anything absent here is refused when the user presses the button. Only core is needed: the app's own commands are not gated, and the file pickers run in Rust rather than through the dialog plugin's JS.",
+  "windows": [
+    "main"
+  ],
+  "permissions": [
+    "core:default"
+  ]
+}

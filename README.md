@@ -114,12 +114,13 @@ path: a stock build links no windowing, X11 or clipboard code at all.
 ```bash
 cargo build --release --features inklift-cli/shot
 inklift shot                              # drag a box, Esc cancels
-inklift shot --region 200,150,500,300     # skip the overlay
+inklift shot --region 200,150,500,300     # skip the drag
 inklift shot --full --screen 1
 ```
 
-The screen is captured *first* and the overlay drawn over that frozen frame,
-so the overlay never appears in its own screenshot. The result is written,
+The drag happens on the real screen: nothing covers it, so there is no overlay
+that could appear in its own screenshot. The only thing drawn is a 2px outline
+around the selection, torn down before the capture is taken. The result is written,
 copied to the clipboard, and the captured region printed to stdout as
 `X,Y,W,H` so it can be replayed with `--region`. Everything else goes to
 stderr, so the command pipes cleanly.
