@@ -10,3 +10,4 @@ bench/
 trial/
 compare-out/
 shots/
+crates/inklift-gui/gen/

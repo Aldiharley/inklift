@@ -1,0 +1,274 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>inklift</title>
+<style>
+/* ── pigment box ────────────────────────────────────────────────────────── */
+:root{
+  --rag-00:#FFFDFA; --rag-50:#FAF7F2; --rag-100:#F2EEE7; --rag-200:#E5DFD6;
+  --rag-300:#D2CABD; --rag-500:#8A8279; --rag-600:#6B645C; --rag-700:#4E4842; --rag-900:#1E1B18;
+  --prussian:#2B6486; --prussian-600:#1F4E73; --prussian-300:#79B4DC;
+  --gall:#8B5E34; --ochre:#9A6410; --vermilion:#B03A2A; --verdigris:#1F7A5C;
+
+  --bg-window:#FAF7F2; --bg-content:#FFFDFA; --bg-well:#F2EEE7;
+  --text:#1E1B18; --text-2:#4E4842; --text-3:#6B645C;
+  --rule:rgba(30,27,24,.085); --rule-strong:rgba(30,27,24,.16);
+  --carve:rgba(255,255,255,.72);
+  --accent:#2B6486; --accent-text:#1F4E73; --accent-on:#FFFDFA;
+  --void-bg:#EDEAE4; --void-a:rgba(30,27,24,.026); --void-b:rgba(255,255,255,.40);
+  --void-top:rgba(255,255,255,.30);
+  --ui:system-ui,"Segoe UI",Roboto,"Noto Sans",sans-serif;
+  --mono:ui-monospace,"DejaVu Sans Mono","Liberation Mono",monospace;
+  --ease:cubic-bezier(.32,.72,0,1);
+}
+html[data-theme="dark"]{
+  --bg-window:#14181B; --bg-content:#0E1113; --bg-well:#1B2024;
+  --text:#E7ECEF; --text-2:#A6AFB5; --text-3:#7A848B;
+  --rule:rgba(255,255,255,.075); --rule-strong:rgba(255,255,255,.16);
+  --carve:rgba(0,0,0,.42);
+  --accent:#79B4DC; --accent-text:#79B4DC; --accent-on:#0E1113;
+  --void-bg:#171B1E; --void-a:rgba(0,0,0,.20); --void-b:rgba(255,255,255,.055);
+  --void-top:rgba(255,255,255,.05);
+}
+*{box-sizing:border-box}
+/* display:block on an img beats the hidden attribute unless this exists */
+[hidden]{display:none!important}
+html,body{height:100%}
+body{margin:0;background:var(--bg-window);color:var(--text);font-family:var(--ui);
+  font-size:13px;line-height:1.38;-webkit-font-smoothing:antialiased;overflow:hidden;
+  user-select:none;-webkit-user-select:none}
+.app{display:flex;flex-direction:column;height:100%}
+
+/* ── title bar ──────────────────────────────────────────────────────────── */
+.bar{display:flex;align-items:center;gap:10px;height:48px;padding:0 14px;flex:none;
+  border-bottom:1px solid var(--rule);box-shadow:0 1px 0 var(--carve)}
+.brand{width:18px;height:18px;color:var(--accent);flex:none}
+.label{font-family:var(--mono);font-size:11px;color:var(--text-2);white-space:nowrap;
+  overflow:hidden;text-overflow:ellipsis;max-width:38ch}
+.spacer{flex:1}
+
+/* recessed well + raised thumb */
+.seg{display:inline-flex;height:28px;padding:2px;border-radius:9px;background:var(--bg-well);gap:2px;
+  box-shadow:inset 0 1px 2px rgba(30,27,24,.11),inset 0 0 0 1px var(--rule),0 1px 0 var(--carve)}
+html[data-theme="dark"] .seg{box-shadow:inset 0 1px 2px rgba(0,0,0,.34),inset 0 0 0 1px var(--rule)}
+.seg button{appearance:none;border:0;background:transparent;font:inherit;font-size:12px;font-weight:600;
+  color:var(--text-2);padding:0 10px;border-radius:7px;cursor:pointer;display:flex;align-items:center;gap:6px}
+.seg button[aria-pressed="true"]{color:var(--text);background:var(--bg-content);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.7),0 0 0 .5px var(--rule-strong),0 1px 2px rgba(30,27,24,.16)}
+html[data-theme="dark"] .seg button[aria-pressed="true"]{box-shadow:inset 0 1px 0 rgba(255,255,255,.08),0 0 0 .5px rgba(0,0,0,.5)}
+.seg button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+.btn{appearance:none;border:0;font:inherit;font-size:13px;font-weight:600;height:30px;padding:0 13px;
+  border-radius:9px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:7px}
+.btn.primary{background:linear-gradient(180deg,#34719A 0%,#2B6486 52%,#24566F 100%);color:#FFFDFA;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.26),inset 0 -1px 0 rgba(0,0,0,.16),
+    0 0 0 .5px rgba(11,30,47,.38),0 1px 2px rgba(11,30,47,.26)}
+.btn.primary:hover{filter:brightness(1.07)} .btn.primary:active{filter:brightness(.95);transform:translateY(.5px)}
+.btn.ghost{background:transparent;color:var(--text-2)}
+.btn.ghost:hover{background:color-mix(in oklab,var(--accent) 10%,transparent);color:var(--text)}
+.btn:disabled{opacity:.45;cursor:default;filter:none;transform:none}
+.btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px;box-shadow:0 0 0 4px rgba(0,0,0,.30)}
+
+/* ── body ───────────────────────────────────────────────────────────────── */
+.body{display:grid;grid-template-columns:1fr 296px;flex:1;min-height:0}
+.stage{background:var(--bg-content);padding:16px;display:flex;flex-direction:column;gap:11px;min-width:0;
+  box-shadow:inset 0 1px 3px rgba(30,27,24,.08)}
+.ground{position:relative;flex:1;min-height:0;border-radius:12px;display:grid;place-items:center;overflow:hidden;
+  box-shadow:inset 0 1px 3px rgba(30,27,24,.13),inset 0 0 0 1px var(--rule);
+  transition:background-color 180ms var(--ease)}
+.ground[data-bg="void"]{background-color:var(--void-bg);
+  background-image:
+    repeating-linear-gradient(45deg,var(--void-a) 0 1px,transparent 1px 12px),
+    repeating-linear-gradient(-45deg,var(--void-b) 0 1px,transparent 1px 12px),
+    radial-gradient(120% 100% at 50% 0%,var(--void-top),transparent 60%);
+  background-size:17px 17px,17px 17px,100% 100%}
+.ground[data-bg="white"]{background:#FFFDFA}
+.ground[data-bg="black"]{background:#0B0D0E}
+.ground[data-bg="ink"]{background:var(--prussian-600)}
+#ink,#src{max-width:92%;max-height:100%;object-fit:contain;display:block;
+  image-rendering:auto;pointer-events:none;-webkit-user-drag:none}
+/* the contact shadow follows the alpha channel per-pixel */
+#ink{filter:drop-shadow(0 1px 1.5px rgba(30,27,24,.28)) drop-shadow(0 4px 10px rgba(30,27,24,.14))}
+.ground[data-bg="black"] #ink,.ground[data-bg="ink"] #ink{
+  filter:drop-shadow(0 1px 2px rgba(0,0,0,.5)) drop-shadow(0 6px 14px rgba(0,0,0,.35))}
+#src{position:absolute;opacity:0;transition:opacity 120ms}
+.ground.peek #ink{opacity:0} .ground.peek #src{opacity:1}
+.hint{position:absolute;left:12px;bottom:9px;font-family:var(--mono);font-size:11px;
+  color:var(--text-2);opacity:.55;pointer-events:none}
+.ground[data-bg="black"] .hint,.ground[data-bg="ink"] .hint{color:rgba(255,255,255,.6)}
+.chip{position:absolute;right:12px;top:10px;font-family:var(--mono);font-size:11px;
+  padding:3px 8px;border-radius:7px;background:var(--bg-content);color:var(--text-2);
+  box-shadow:0 0 0 1px var(--rule),0 2px 6px rgba(30,27,24,.14);opacity:0;transition:opacity 140ms}
+.chip.on{opacity:1}
+
+.empty{text-align:center;color:var(--text-3);display:flex;flex-direction:column;gap:14px;align-items:center;padding:30px}
+.empty h2{margin:0;font-size:19px;font-weight:600;color:var(--text-2);letter-spacing:-.012em}
+.empty p{margin:0;max-width:40ch;font-size:13px;line-height:1.5}
+
+.statusbar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;justify-content:space-between;min-height:20px}
+.readout{font-family:var(--mono);font-size:12px;color:var(--text-2);font-variant-numeric:tabular-nums}
+.readout b{color:var(--text);font-weight:500}
+
+/* ── sidebar ────────────────────────────────────────────────────────────── */
+.side{padding:15px 15px 0;display:flex;flex-direction:column;gap:15px;overflow-y:auto;
+  border-left:1px solid var(--rule)}
+.shead{font-size:10.5px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--text-3)}
+.field{display:flex;flex-direction:column;gap:6px}
+.flabel{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+.flabel .n{font-size:13px;font-weight:500}
+.val{font-family:var(--mono);font-size:12px;min-width:5ch;text-align:right;padding:2px 7px;border-radius:6px;
+  background:var(--bg-well);color:var(--text-2);font-variant-numeric:tabular-nums;
+  box-shadow:inset 0 1px 2px rgba(30,27,24,.10),inset 0 0 0 1px var(--rule)}
+.ends{display:flex;justify-content:space-between;font-size:11px;color:var(--text-3)}
+input[type=range]{appearance:none;width:100%;height:16px;background:transparent;cursor:pointer;margin:0}
+input[type=range]::-webkit-slider-runnable-track{height:4px;border-radius:2px;background:var(--bg-well);
+  box-shadow:inset 0 1px 2px rgba(30,27,24,.12),inset 0 0 0 1px var(--rule)}
+input[type=range]::-webkit-slider-thumb{appearance:none;width:16px;height:16px;border-radius:50%;margin-top:-6px;
+  background:var(--bg-content);box-shadow:0 0 0 .5px var(--rule-strong),0 1px 2.5px rgba(30,27,24,.22)}
+input[type=range]:active::-webkit-slider-thumb{transform:scale(.96)}
+input[type=range]:focus-visible{outline:2px solid var(--accent);outline-offset:4px;border-radius:8px}
+.check{display:flex;gap:9px;align-items:flex-start;cursor:pointer;font-size:13px}
+.check input{appearance:none;width:15px;height:15px;border-radius:4px;flex:none;margin-top:1px;cursor:pointer;
+  background:var(--bg-well);box-shadow:inset 0 1px 2px rgba(30,27,24,.12),inset 0 0 0 1px var(--rule)}
+.check input:checked{background:var(--accent);box-shadow:inset 0 1px 0 rgba(255,255,255,.26)}
+.check input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+/* ink swatches sit directly under the ground swatches, deliberately */
+.swatches{display:flex;gap:7px;flex-wrap:wrap}
+.sw{width:26px;height:26px;border-radius:7px;cursor:pointer;border:0;padding:0;position:relative;
+  box-shadow:0 0 0 1px var(--rule-strong),inset 0 1px 0 rgba(255,255,255,.25)}
+.sw[aria-pressed="true"]{box-shadow:0 0 0 2px var(--accent),0 0 0 3.5px var(--bg-content)}
+.sw:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+.sw.auto{background:conic-gradient(from 210deg,#1E266B,#8B5E34,#1E266B)}
+
+.banner{display:flex;gap:9px;align-items:flex-start;padding:9px 11px;border-radius:10px;font-size:12px;line-height:1.45;
+  background:color-mix(in oklab,var(--ochre) 14%,transparent);
+  box-shadow:inset 0 0 0 1px color-mix(in oklab,var(--ochre) 32%,transparent)}
+.banner button{appearance:none;border:0;background:transparent;font:inherit;font-size:12px;font-weight:600;
+  color:var(--accent-text);cursor:pointer;padding:0;text-decoration:underline;text-underline-offset:2px}
+.banner[hidden]{display:none}
+
+.diag{margin-top:auto;padding:11px 0 14px;border-top:1px solid var(--rule);
+  font-family:var(--mono);font-size:11px;line-height:1.7;color:var(--text-3)}
+.diag .dot{display:inline-block;width:9px;height:9px;border-radius:2px;vertical-align:-1px;margin-right:6px;
+  box-shadow:0 0 0 1px var(--rule-strong)}
+
+.bottom{flex:none;display:flex;align-items:center;gap:12px;flex-wrap:wrap;justify-content:space-between;
+  padding:11px 14px;border-top:1px solid var(--rule);box-shadow:0 -1px 0 var(--carve)}
+.gsw{width:12px;height:12px;border-radius:50%;box-shadow:0 0 0 1px var(--rule-strong)}
+.gsw.void{background-color:var(--void-bg);
+  background-image:repeating-linear-gradient(45deg,var(--void-a) 0 1px,transparent 1px 6px),
+                   repeating-linear-gradient(-45deg,var(--void-b) 0 1px,transparent 1px 6px)}
+.gsw.white{background:#FFFDFA}
+.gsw.both{background:linear-gradient(90deg,var(--void-bg) 0 50%,#FFFDFA 50% 100%)}
+.toast{position:fixed;right:16px;bottom:16px;padding:10px 13px;border-radius:11px;font-size:12.5px;
+  background:var(--bg-content);color:var(--text);box-shadow:0 0 0 1px var(--rule),0 10px 26px -8px rgba(20,18,16,.4);
+  opacity:0;transform:translateY(6px);transition:opacity 160ms,transform 160ms var(--ease);pointer-events:none}
+.toast.on{opacity:1;transform:none}
+.toast.bad{box-shadow:0 0 0 1px color-mix(in oklab,var(--vermilion) 45%,transparent),0 10px 26px -8px rgba(20,18,16,.4)}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="bar">
+    <svg class="brand" viewBox="0 0 16 16" fill="currentColor" shape-rendering="crispEdges" aria-hidden="true">
+      <rect x="4" y="1" width="5" height="1"/><rect x="3" y="2" width="2" height="1"/><rect x="8" y="2" width="3" height="1"/>
+      <rect x="2" y="3" width="2" height="3"/><rect x="10" y="3" width="2" height="3"/>
+      <rect x="3" y="6" width="2" height="1"/><rect x="9" y="6" width="2" height="1"/><rect x="4" y="7" width="5" height="1"/>
+      <rect x="5" y="8" width="3" height="3"/><rect x="12" y="10" width="2" height="1"/>
+      <rect x="5" y="11" width="10" height="1"/><rect x="6" y="12" width="7" height="1"/>
+      <rect x="2" y="14" width="12" height="1"/>
+    </svg>
+    <span class="label" id="label">Nothing loaded</span>
+    <span class="spacer"></span>
+    <button class="btn ghost" id="openBtn">Open a file…</button>
+    <button class="btn ghost" id="grabBtn">Lift from screen</button>
+    <div class="seg" id="groundSeg" role="group" aria-label="Preview background">
+      <button aria-pressed="true"  data-v="void"><span class="gsw void"></span>Void</button>
+      <button aria-pressed="false" data-v="white"><span class="gsw white"></span>White</button>
+      <button aria-pressed="false" data-v="black">Black</button>
+      <button aria-pressed="false" data-v="ink">Ink</button>
+    </div>
+    <div class="seg" id="themeSeg" role="group" aria-label="Theme">
+      <button aria-pressed="true" data-v="light">☀</button>
+      <button aria-pressed="false" data-v="dark">☾</button>
+    </div>
+  </div>
+
+  <div class="body">
+    <div class="stage">
+      <div class="banner" id="banner" hidden>
+        <span>⟲</span>
+        <div><b>This looks like light ink on a dark background.</b>
+          <button type="button" id="flipBtn">Flip it</button></div>
+      </div>
+      <div class="ground" id="ground" data-bg="void">
+        <div class="empty" id="empty">
+          <h2>Nothing lifted yet</h2>
+          <p>Open an image, or drag a box on screen. The handwriting comes back with the paper gone —
+             a real alpha channel you can drop onto anything.</p>
+        </div>
+        <img id="ink" alt="Extracted handwriting" hidden>
+        <img id="src" alt="The original image" hidden>
+        <span class="hint" id="peekHint" hidden>hold to compare</span>
+        <span class="chip" id="chip"></span>
+      </div>
+      <div class="statusbar">
+        <span class="readout" id="readout"></span>
+      </div>
+    </div>
+
+    <aside class="side">
+      <div class="field">
+        <div class="shead">Ink</div>
+        <div class="swatches" id="inkSw">
+          <button class="sw auto" data-ink="" aria-pressed="true" title="As written"></button>
+          <button class="sw" data-ink="black" style="background:#111" aria-pressed="false" title="Black"></button>
+          <button class="sw" data-ink="white" style="background:#fff" aria-pressed="false" title="White"></button>
+          <button class="sw" data-ink="#2B6486" style="background:#2B6486" aria-pressed="false" title="Prussian"></button>
+          <button class="sw" data-ink="#8B5E34" style="background:#8B5E34" aria-pressed="false" title="Iron gall"></button>
+        </div>
+      </div>
+
+      <div class="field">
+        <div class="flabel"><span class="n">Pick up</span><span class="val" id="kVal">—</span></div>
+        <input type="range" id="k" min="6" max="40" value="20" aria-label="Pick up">
+        <div class="ends"><span>Bold ink only</span><span>Every faint mark</span></div>
+      </div>
+
+      <div class="field">
+        <div class="flabel"><span class="n">Remove specks</span><span class="val" id="mVal">8</span></div>
+        <input type="range" id="m" min="0" max="80" value="8" aria-label="Remove specks">
+        <div class="ends"><span>Keep everything</span><span>Remove printed noise</span></div>
+      </div>
+
+      <div class="field">
+        <div class="flabel"><span class="n">Thickest stroke</span><span class="val" id="rVal">auto</span></div>
+        <input type="range" id="r" min="0" max="40" value="0" aria-label="Thickest stroke">
+        <div class="ends"><span>Raise if thick strokes come out hollow</span></div>
+      </div>
+
+      <label class="check"><input type="checkbox" id="inv"><span>Light ink on a dark background</span></label>
+
+      <div class="diag" id="diag"></div>
+    </aside>
+  </div>
+
+  <div class="bottom">
+    <div class="seg" id="outSeg" role="group" aria-label="Output format">
+      <button aria-pressed="true"  data-v="alpha"><span class="gsw void"></span>Transparent</button>
+      <button aria-pressed="false" data-v="white"><span class="gsw white"></span>On white</button>
+    </div>
+    <div style="display:flex;gap:8px">
+      <button class="btn ghost"  id="saveBtn" disabled>Save…</button>
+      <button class="btn primary" id="copyBtn" disabled>Copy</button>
+    </div>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+<script src="app.js"></script>
+</body>
+</html>

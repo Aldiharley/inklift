@@ -32,6 +32,28 @@ pub struct Options {
     pub invert: bool,
 }
 
+impl Options {
+    /// Rescale for a downscaled preview.
+    ///
+    /// A live retune loop runs on a proxy so it can keep up with a dragged
+    /// slider, and every pixel-denominated setting has to come with it. Radii
+    /// are lengths and scale by `s`; `min_area` is an area and scales by `s²`.
+    /// Getting that exponent wrong yields a preview that is confidently wrong
+    /// rather than visibly broken — much the worse failure for a tuning UI.
+    ///
+    /// Nothing is allowed to reach zero: a zero radius is a no-op filter, and
+    /// the preview would silently show an unprocessed image.
+    pub fn scaled_for_proxy(mut self, s: f32) -> Self {
+        let len = |v: usize| ((v as f32 * s).round() as usize).max(1);
+        self.sauvola_radius = len(self.sauvola_radius);
+        self.feather = len(self.feather);
+        self.background_radius = self.background_radius.map(len);
+        self.min_area = ((self.min_area as f32 * s * s).round() as usize).max(1);
+        // sauvola_k, invert and core_radius describe the image, not its size.
+        self
+    }
+}
+
 impl Default for Options {
     fn default() -> Self {
         Self {
