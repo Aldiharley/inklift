@@ -222,6 +222,10 @@ pub fn run_shot(config: &ShotConfig) -> Result<ShotOutcome> {
     let capturer = X11Capturer::new()?;
     let monitors = capturer.monitors()?;
 
+    // An interactive pick already holds a clean capture of the screen, taken
+    // before the overlay existed. Re-grabbing would photograph the overlay.
+    let mut prepicked: Option<(inklift_shot::Frame, Rect)> = None;
+
     let region = match config.source {
         ShotSource::Region(r) => r,
         ShotSource::Full(index) => {
@@ -245,15 +249,24 @@ pub fn run_shot(config: &ShotConfig) -> Result<ShotOutcome> {
                 .find(|m| m.primary)
                 .or_else(|| monitors.first())
                 .ok_or("no screens detected")?;
-            let full = capturer.grab(&screen.bounds)?;
-            match inklift_shot::pick_region(full, screen.bounds, (MIN_SELECTION, MIN_SELECTION))? {
-                inklift_shot::Outcome::Selected(rect) => rect,
+            let origin = screen.bounds;
+            let full = capturer.grab(&origin)?;
+            let (outcome, full) =
+                inklift_shot::pick_region(full, origin, (MIN_SELECTION, MIN_SELECTION))?;
+            match outcome {
+                inklift_shot::Outcome::Selected(rect) => {
+                    prepicked = Some((full, origin));
+                    rect
+                }
                 _ => return Ok(ShotOutcome::Cancelled),
             }
         }
     };
 
-    let frame = capturer.grab(&region)?;
+    let frame = match prepicked {
+        Some((full, origin)) => inklift_shot::crop_global(&full, origin, region)?,
+        None => capturer.grab(&region)?,
+    };
 
     // Only now that the capture succeeded do any files get created.
     let raw = if config.keep_raw {

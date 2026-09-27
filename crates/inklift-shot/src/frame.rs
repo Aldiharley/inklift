@@ -126,3 +126,13 @@ impl Frame {
         out
     }
 }
+
+/// Take a globally-positioned region out of a frame captured at `origin`.
+///
+/// This is what interactive capture must use instead of grabbing the screen a
+/// second time: by the time a region has been chosen, the overlay is sitting
+/// on top of the screen and a fresh grab photographs the overlay rather than
+/// what is underneath it.
+pub fn crop_global(frame: &Frame, origin: Rect, region: Rect) -> Result<Frame, String> {
+    frame.crop(&region.relative_to(&origin))
+}

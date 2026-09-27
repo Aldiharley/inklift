@@ -32,6 +32,9 @@ struct Overlay {
     window: Option<Rc<Window>>,
     surface: Option<softbuffer::Surface<Rc<Window>, Rc<Window>>>,
     cursor: (i32, i32),
+    /// Set when the overlay could not be brought up. Without this, a failure
+    /// to open the window is indistinguishable from the user pressing Esc.
+    error: Option<String>,
 }
 
 impl Overlay {
@@ -55,6 +58,7 @@ impl Overlay {
             window: None,
             surface: None,
             cursor: (0, 0),
+            error: None,
         }
     }
 
@@ -124,22 +128,37 @@ impl ApplicationHandler for Overlay {
             ))
             .with_position(winit::dpi::PhysicalPosition::new(self.bounds.x, self.bounds.y));
 
-        let Ok(window) = event_loop.create_window(attrs) else {
-            event_loop.exit();
-            return;
+        let window = match event_loop.create_window(attrs) {
+            Ok(w) => w,
+            Err(e) => {
+                self.error = Some(format!("could not open the selection overlay: {e}"));
+                event_loop.exit();
+                return;
+            }
         };
         let window = Rc::new(window);
         window.set_cursor(winit::window::Cursor::Icon(winit::window::CursorIcon::Crosshair));
 
-        if let Ok(context) = softbuffer::Context::new(window.clone()) {
-            if let Ok(mut surface) = softbuffer::Surface::new(&context, window.clone()) {
+        match softbuffer::Context::new(window.clone())
+            .and_then(|ctx| softbuffer::Surface::new(&ctx, window.clone()))
+        {
+            Ok(mut surface) => {
                 if let (Some(w), Some(h)) = (
                     NonZeroU32::new(self.frame.width()),
                     NonZeroU32::new(self.frame.height()),
                 ) {
-                    let _ = surface.resize(w, h);
+                    if let Err(e) = surface.resize(w, h) {
+                        self.error = Some(format!("could not size the overlay surface: {e}"));
+                        event_loop.exit();
+                        return;
+                    }
                 }
                 self.surface = Some(surface);
+            }
+            Err(e) => {
+                self.error = Some(format!("could not draw the overlay: {e}"));
+                event_loop.exit();
+                return;
             }
         }
         self.window = Some(window);
@@ -190,12 +209,29 @@ impl ApplicationHandler for Overlay {
 ///
 /// `frame` must already be captured: showing the overlay first would put the
 /// overlay itself into the picture.
-pub fn pick_region(frame: Frame, bounds: Rect, min: (u32, u32)) -> Result<Outcome, String> {
+pub fn pick_region(frame: Frame, bounds: Rect, min: (u32, u32)) -> Result<(Outcome, Frame), String> {
     let event_loop = EventLoop::new().map_err(|e| format!("cannot start an event loop: {e}"))?;
     event_loop.set_control_flow(ControlFlow::Wait);
     let mut overlay = Overlay::new(frame, bounds, min);
     event_loop
         .run_app(&mut overlay)
         .map_err(|e| format!("overlay failed: {e}"))?;
-    Ok(overlay.state.outcome())
+
+    if let Some(e) = overlay.error {
+        return Err(e);
+    }
+    let outcome = overlay.state.outcome();
+    // The frame goes back to the caller: it is the only uncontaminated copy of
+    // the screen, taken before this overlay existed.
+    let frame = overlay.frame;
+    match outcome {
+        // The loop ended without the user ever acting on it. That is not a
+        // cancellation; something closed the overlay out from under us.
+        Outcome::Pending => Err(
+            "the selection overlay closed before anything was selected. \
+             If your desktop blocks always-on-top windows, try --region or --full instead."
+                .into(),
+        ),
+        settled => Ok((settled, frame)),
+    }
 }

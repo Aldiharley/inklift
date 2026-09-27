@@ -102,3 +102,51 @@ fn a_frame_exports_rgba_bytes() {
 
     assert_eq!(rgba, vec![1, 2, 3, 255, 4, 5, 6, 255]);
 }
+
+/// Interactive capture must reuse the frame it already grabbed, not go back to
+/// the screen: by then the overlay is on top of it and gets photographed too.
+/// This is that operation - take a globally-positioned region out of a frame
+/// captured at a known origin.
+#[test]
+fn a_global_region_crops_out_of_a_frame_captured_at_an_origin() {
+    // A 4x4 frame representing a monitor whose top-left is at (100, 200).
+    let mut px = Vec::new();
+    for y in 0..4u8 {
+        for x in 0..4u8 {
+            px.push((x, y, 0));
+        }
+    }
+    let frame = Frame::from_bgrx(4, 4, bgrx(&px)).unwrap();
+    let origin = Rect::new(100, 200, 4, 4);
+
+    let out = inklift_shot::crop_global(&frame, origin, Rect::new(101, 202, 2, 2)).unwrap();
+
+    assert_eq!((out.width(), out.height()), (2, 2));
+    assert_eq!(out.pixel(0, 0), [1, 2, 0], "global (101,202) is local (1,2)");
+    assert_eq!(out.pixel(1, 1), [2, 3, 0]);
+}
+
+#[test]
+fn cropping_a_global_region_that_leaves_the_frame_is_refused() {
+    let frame = Frame::from_bgrx(4, 4, bgrx(&[(0, 0, 0); 16])).unwrap();
+    let origin = Rect::new(100, 200, 4, 4);
+
+    assert!(inklift_shot::crop_global(&frame, origin, Rect::new(103, 200, 4, 2)).is_err());
+    assert!(inklift_shot::crop_global(&frame, origin, Rect::new(0, 0, 2, 2)).is_err());
+}
+
+#[test]
+fn a_monitor_at_a_negative_origin_still_crops_correctly() {
+    let mut px = Vec::new();
+    for y in 0..4u8 {
+        for x in 0..4u8 {
+            px.push((x, y, 0));
+        }
+    }
+    let frame = Frame::from_bgrx(4, 4, bgrx(&px)).unwrap();
+    let origin = Rect::new(-1920, 0, 4, 4);
+
+    let out = inklift_shot::crop_global(&frame, origin, Rect::new(-1918, 1, 2, 2)).unwrap();
+
+    assert_eq!(out.pixel(0, 0), [2, 1, 0]);
+}

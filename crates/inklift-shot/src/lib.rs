@@ -16,7 +16,7 @@ mod x11;
 
 pub use clipboard::put_image;
 pub use capture::{Capturer, Monitor, monitor_at, monitor_for, virtual_bounds};
-pub use frame::Frame;
+pub use frame::{Frame, crop_global};
 pub use geometry::Rect;
 pub use overlay::pick_region;
 pub use selection::{Outcome, SelectionState};
