@@ -7,3 +7,5 @@ samples/*.ink.png
 samples/*.white.png
 samples/contact_sheet.png
 bench/
+trial/
+compare-out/

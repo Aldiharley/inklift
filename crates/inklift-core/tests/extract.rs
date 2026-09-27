@@ -82,3 +82,33 @@ fn a_blank_page_extracts_to_nothing() {
 
     assert!(result.coverage() < 0.01, "invented ink on a blank page");
 }
+
+/// Thin, softened strokes have very few fully-covered pixels: nearly every one
+/// is part ink, part paper. A median over them lands halfway to the paper and
+/// reports a pen far lighter than it is, which then caps how dark the white
+/// composite can ever go. Real low-resolution captures look like this.
+///
+/// The stroke width here matters: at 2px with this much blur the true ink
+/// colour is not present anywhere in the image and no estimator could recover
+/// it. At 3px it is present, so failing is a real defect rather than physics.
+#[test]
+fn ink_colour_survives_thin_strokes_with_no_solid_core() {
+    let page = make_page(&PageSpec {
+        stroke_width: 3.0,
+        blur: 1,
+        ink_rgb: [0.08, 0.10, 0.12],
+        ..Default::default()
+    });
+
+    let c = extract(&page.rgb, &Options::default()).ink_color();
+
+    let expected = [0.08 / common::PAPER, 0.10 / common::PAPER, 0.12 / common::PAPER];
+    for ch in 0..3 {
+        assert!(
+            (c[ch] - expected[ch]).abs() < 0.12,
+            "channel {ch} came back {:.3}, expected about {:.3} - washed out toward paper",
+            c[ch],
+            expected[ch]
+        );
+    }
+}

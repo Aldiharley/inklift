@@ -63,6 +63,9 @@ pub struct PageSpec {
     pub gradient: f32,
     pub stroke_width: f32,
     pub noise: f32,
+    /// Box-blur radius applied after compositing, standing in for lens softness
+    /// and JPEG ringing. This is what leaves thin strokes with no solid core.
+    pub blur: usize,
     pub ink_rgb: [f32; 3],
     pub seed: u64,
 }
@@ -75,6 +78,7 @@ impl Default for PageSpec {
             gradient: 0.45,
             stroke_width: 3.0,
             noise: 0.0,
+            blur: 0,
             ink_rgb: [0.10, 0.13, 0.42],
             seed: 7,
         }
@@ -150,6 +154,7 @@ pub fn make_page(spec: &PageSpec) -> Page {
     let mut rgb = [Grid::new(w, h), Grid::new(w, h), Grid::new(w, h)];
     let mut gray = Grid::new(w, h);
 
+
     for i in 0..w * h {
         let a = ink.data()[i];
         let lit = field.data()[i];
@@ -166,6 +171,13 @@ pub fn make_page(spec: &PageSpec) -> Page {
             sum += v;
         }
         gray.data_mut()[i] = sum / 3.0;
+    }
+
+    if spec.blur > 0 {
+        for plane in rgb.iter_mut() {
+            *plane = inklift_core::box_blur(plane, spec.blur);
+        }
+        gray = inklift_core::box_blur(&gray, spec.blur);
     }
 
     Page { rgb, gray, ink, paper }

@@ -122,3 +122,49 @@ fn malformed_json_is_an_error_not_a_panic() {
     assert!(parse_response(Provider::Gemini, b"not json at all").is_err());
     assert!(parse_response(Provider::OpenAi, b"{").is_err());
 }
+
+/// A failing status still carries a JSON body explaining why. Throwing it away
+/// and reporting only the number leaves the user with nothing to act on.
+#[test]
+fn an_error_status_still_surfaces_the_body_message() {
+    let body = br#"{"error":{"code":429,"message":"You exceeded your current quota","status":"RESOURCE_EXHAUSTED"}}"#;
+
+    let err = inklift_api::interpret(Provider::Gemini, 429, body).unwrap_err();
+
+    assert!(err.contains("429"), "status should still be shown: {err}");
+    assert!(err.contains("exceeded your current quota"), "got {err}");
+}
+
+#[test]
+fn an_error_status_with_an_unreadable_body_still_names_the_status() {
+    let err = inklift_api::interpret(Provider::Gemini, 503, b"<html>bad gateway</html>").unwrap_err();
+    assert!(err.contains("503"), "got {err}");
+}
+
+#[test]
+fn a_success_status_parses_normally() {
+    let body = format!(
+        r#"{{"candidates":[{{"content":{{"parts":[{{"inlineData":{{"data":"{}"}}}}]}}}}]}}"#,
+        b64_encode(FAKE_PNG)
+    );
+    assert_eq!(inklift_api::interpret(Provider::Gemini, 200, body.as_bytes()).unwrap(), FAKE_PNG);
+}
+
+/// `input_fidelity` is accepted by the gpt-image-1 family and rejected outright
+/// by gpt-image-2, so it can only be sent when the model is known to take it.
+#[test]
+fn input_fidelity_is_only_sent_to_models_that_accept_it() {
+    let two = build_request(Provider::OpenAi, "gpt-image-2", "k", FAKE_PNG, "image/png", "p", false);
+    assert!(
+        !String::from_utf8_lossy(&two.body).contains("input_fidelity"),
+        "gpt-image-2 rejects this parameter outright"
+    );
+
+    for model in ["gpt-image-1", "gpt-image-1.5"] {
+        let req = build_request(Provider::OpenAi, model, "k", FAKE_PNG, "image/png", "p", false);
+        assert!(
+            String::from_utf8_lossy(&req.body).contains("input_fidelity"),
+            "{model} supports it and should get it"
+        );
+    }
+}

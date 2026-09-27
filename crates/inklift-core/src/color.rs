@@ -24,11 +24,21 @@ fn erode(mask: &Mask, radius: usize) -> Mask {
     out
 }
 
+/// Fraction of core samples taken as representative of undiluted ink.
+///
+/// Not the median. At low resolution, or through lens softness and JPEG
+/// ringing, a thin stroke has almost no fully covered pixels: nearly every one
+/// is part ink, part paper. A median over those lands halfway to the paper and
+/// reports a pen far lighter than it is, which then caps how dark the white
+/// composite can ever go. Taking a low percentile asks instead "what colour is
+/// this pen where it is least diluted", while staying robust to the handful of
+/// dark outliers a plain minimum would seize on.
+const INK_PERCENTILE: f32 = 0.10;
+
 /// Estimate the pen colour, expressed relative to the paper.
 ///
 /// Sampled from the eroded core of the mask, never the feathered rim, where
-/// every pixel is a blend of ink and paper and would wash the colour out. The
-/// median rather than the mean, so a few stray pixels cannot drag it.
+/// every pixel is a blend of ink and paper and would wash the colour out.
 ///
 /// Assumes a roughly neutral paper: each channel is normalized by the shared
 /// luminance background rather than its own, which costs one closing instead of
@@ -47,7 +57,10 @@ pub fn estimate_ink_color(normalized_rgb: &[Grid; 3], mask: &Mask, core_radius: 
             continue;
         }
         values.sort_by(|a, b| a.partial_cmp(b).unwrap_or(core::cmp::Ordering::Equal));
-        out[ch] = values[values.len() / 2].clamp(0.0, 1.0);
+        // Values are darkest-first once sorted, so a low index is the least
+        // diluted ink.
+        let index = ((values.len() as f32 * INK_PERCENTILE) as usize).min(values.len() - 1);
+        out[ch] = values[index].clamp(0.0, 1.0);
     }
     out
 }

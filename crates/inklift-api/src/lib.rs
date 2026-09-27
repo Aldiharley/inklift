@@ -12,4 +12,4 @@ mod wire;
 pub use base64::{b64_decode, b64_encode};
 pub use client::{generate, key_from_env, resolve_key};
 pub use provider::Provider;
-pub use wire::{DEFAULT_PROMPT, Request, build_request, parse_response};
+pub use wire::{DEFAULT_PROMPT, Request, build_request, interpret, parse_response};

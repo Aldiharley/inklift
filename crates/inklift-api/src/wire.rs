@@ -73,7 +73,11 @@ pub fn build_request(
             multipart_field(&mut body, boundary, "model", model);
             multipart_field(&mut body, boundary, "prompt", prompt);
             multipart_field(&mut body, boundary, "output_format", "png");
-            multipart_field(&mut body, boundary, "input_fidelity", "high");
+            // Only the gpt-image-1 family accepts this; gpt-image-2 rejects the
+            // request outright rather than ignoring it.
+            if model.starts_with("gpt-image-1") {
+                multipart_field(&mut body, boundary, "input_fidelity", "high");
+            }
             multipart_field(
                 &mut body,
                 boundary,
@@ -146,5 +150,20 @@ pub fn parse_response(provider: Provider, body: &[u8]) -> Result<Vec<u8>, String
                 .ok_or_else(|| "openai: reply contained no image".to_string())?;
             b64_decode(data).map_err(|e| format!("openai: {e}"))
         }
+    }
+}
+
+/// Turn an HTTP status and body into either the image or a usable explanation.
+///
+/// A non-2xx still carries a JSON error worth showing, so the body is parsed
+/// either way and the status is only used to decorate the message.
+pub fn interpret(provider: Provider, status: u16, body: &[u8]) -> Result<Vec<u8>, String> {
+    if (200..300).contains(&status) {
+        return parse_response(provider, body);
+    }
+    match parse_response(provider, body) {
+        // A 4xx whose body somehow parsed as an image is still a failure.
+        Ok(_) => Err(format!("{}: HTTP {status}", provider.name())),
+        Err(explained) => Err(format!("HTTP {status} - {explained}")),
     }
 }
