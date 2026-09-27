@@ -14,7 +14,13 @@ path = "src/lib.rs"
 name = "inklift"
 path = "src/main.rs"
 
+[features]
+# Offline by default: without this, no HTTP client is linked into the binary
+# at all, and the hosted flags are refused rather than silently ignored.
+default = []
+api = ["dep:inklift-api"]
+
 [dependencies]
 image = { version = "0.25.9", default-features = false, features = ["png", "jpeg"] }
-inklift-api = { version = "0.1.0", path = "../inklift-api" }
+inklift-api = { version = "0.1.0", path = "../inklift-api", optional = true }
 inklift-core = { path = "../inklift-core" }

@@ -60,6 +60,7 @@ use std::path::PathBuf;
 
 use inklift_core::Options;
 
+#[cfg(feature = "api")]
 pub const USAGE: &str = "\
 inklift - lift handwriting off a photograph
 
@@ -86,6 +87,26 @@ HOSTED MODEL (opt-in, sends the image to a third party):
         --timeout <SECS>  Request timeout                          [default: 120]
 ";
 
+#[cfg(not(feature = "api"))]
+pub const USAGE: &str = "\
+inklift - lift handwriting off a photograph
+
+USAGE:
+    inklift <IMAGE> [OPTIONS]
+
+OPTIONS:
+    -o, --output <PATH>   Where to write the result   [default: <IMAGE>.ink.png]
+        --white           Ink on a white background instead of transparent
+        --both            Write both exports, suffixed .ink.png and .white.png
+        --k <FLOAT>       Sauvola k; raise it to keep less faint ink  [default: 0.20]
+        --window <PX>     Sauvola window radius                       [default: 12]
+        --min-area <PX>   Discard connected components below this     [default: 8]
+        --radius <PX>     Paper-estimate radius; must exceed the stroke half-width
+        --feather <PX>    How far soft edges reach past the stroke    [default: 1]
+    -q, --quiet           Suppress the summary line
+    -h, --help            Show this message
+";
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Output {
     Transparent,
@@ -94,6 +115,7 @@ pub enum Output {
 }
 
 /// Settings for the opt-in hosted-model path.
+#[cfg(feature = "api")]
 #[derive(Clone, Debug)]
 pub struct ViaConfig {
     pub provider: inklift_api::Provider,
@@ -111,6 +133,7 @@ pub struct Config {
     pub options: Options,
     pub quiet: bool,
     /// `None` runs everything locally. Set only by an explicit `--via`.
+    #[cfg(feature = "api")]
     pub via: Option<ViaConfig>,
 }
 
@@ -132,11 +155,14 @@ pub fn parse_args(argv: &[String]) -> Result<Config> {
     let mut mode = Output::Transparent;
     let mut options = Options::default();
     let mut quiet = false;
-    let mut via: Option<inklift_api::Provider> = None;
-    let mut model: Option<String> = None;
-    let mut prompt: Option<String> = None;
-    let mut api_key: Option<String> = None;
-    let mut timeout_secs = 120u64;
+    #[cfg(feature = "api")]
+    let (mut via, mut model, mut prompt, mut api_key, mut timeout_secs) = (
+        None::<inklift_api::Provider>,
+        None::<String>,
+        None::<String>,
+        None::<String>,
+        120u64,
+    );
 
     let mut i = 0;
     while i < argv.len() {
@@ -160,11 +186,24 @@ pub fn parse_args(argv: &[String]) -> Result<Config> {
             "--min-area" => options.min_area = value("--min-area")?.parse()?,
             "--feather" => options.feather = value("--feather")?.parse()?,
             "--radius" => options.background_radius = Some(value("--radius")?.parse()?),
+            #[cfg(feature = "api")]
             "--via" => via = Some(value("--via")?.parse()?),
+            #[cfg(feature = "api")]
             "--model" => model = Some(value("--model")?),
+            #[cfg(feature = "api")]
             "--prompt" => prompt = Some(value("--prompt")?),
+            #[cfg(feature = "api")]
             "--api-key" => api_key = Some(value("--api-key")?),
+            #[cfg(feature = "api")]
             "--timeout" => timeout_secs = value("--timeout")?.parse()?,
+            #[cfg(not(feature = "api"))]
+            "--via" | "--model" | "--prompt" | "--api-key" | "--timeout" => {
+                return Err(format!(
+                    "{arg} needs the hosted-model path, which this build does not \
+                     include.\nRebuild with: cargo build --release --features inklift-cli/api"
+                )
+                .into());
+            }
             other if other.starts_with('-') => {
                 return Err(format!("unknown option {other}\n\n{USAGE}").into());
             }
@@ -179,6 +218,7 @@ pub fn parse_args(argv: &[String]) -> Result<Config> {
     })?;
     let output = output.unwrap_or_else(|| default_output(&input));
 
+    #[cfg(feature = "api")]
     let via = match via {
         Some(provider) => Some(ViaConfig {
             model: model.unwrap_or_else(|| provider.default_model().to_string()),
@@ -198,7 +238,15 @@ pub fn parse_args(argv: &[String]) -> Result<Config> {
             None
         }
     };
-    Ok(Config { input, output, mode, options, quiet, via })
+    Ok(Config {
+        input,
+        output,
+        mode,
+        options,
+        quiet,
+        #[cfg(feature = "api")]
+        via,
+    })
 }
 
 /// What a run produced, for the caller to report or assert on.
@@ -223,6 +271,7 @@ fn with_suffix(path: &Path, suffix: &str) -> PathBuf {
 
 /// Load, extract, and write whichever exports the config asks for.
 pub fn run(config: &Config) -> Result<Report> {
+    #[cfg(feature = "api")]
     if let Some(via) = &config.via {
         return run_via(config, via);
     }
@@ -258,6 +307,7 @@ pub fn run(config: &Config) -> Result<Report> {
     })
 }
 
+#[cfg(feature = "api")]
 fn mime_for(path: &Path) -> &'static str {
     match path.extension().and_then(|e| e.to_str()).map(str::to_ascii_lowercase).as_deref() {
         Some("jpg") | Some("jpeg") => "image/jpeg",
@@ -266,6 +316,7 @@ fn mime_for(path: &Path) -> &'static str {
     }
 }
 
+#[cfg(feature = "api")]
 /// Send the page to a hosted model and write back whatever it returns.
 ///
 /// The reply is a finished image, not an opacity field, so it is written

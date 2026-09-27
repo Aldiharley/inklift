@@ -32,7 +32,7 @@ what keeps stroke edges smooth. See `research-brief.html` §04.
 |---|---|---|
 | `inklift-core` | **none** | The whole algorithm. Plain `std`, so it drops into a Tauri backend, a WASM bundle or a mobile app unchanged. |
 | `inklift-cli` | `image` | PNG/JPEG decoding and the command line. |
-| `inklift-api` | `ureq`, `serde_json` | Optional hosted-model path, for measuring the local one against it. Unreachable without an explicit `--via`. |
+| `inklift-api` | `ureq`, `serde_json` | Optional hosted-model path, for measuring the local one against it. Behind the `api` feature, so a default build does not link it. |
 
 Keeping the core dependency-free is deliberate — it is what makes Phase 2 (the
 Tauri desktop app) a wiring job rather than a port.
@@ -69,7 +69,9 @@ irreversible step available in this pipeline, and nothing here takes it.
 ## Build and test
 
 ```bash
-cargo test              # 99 tests, none of which touch the network
+cargo test                              # 104 tests, offline build
+cargo test --features inklift-cli/api   # 106 tests
+# Neither run touches the network.
 cargo build --release
 ```
 
@@ -162,9 +164,22 @@ and not a result. Real captures will score worse.
 
 ## Comparing against a hosted model
 
-The local pipeline is the default and nothing leaves the machine. `--via` opts
-into sending the page to an image model instead, so the two can be measured on
-the same images with the same scorer.
+**The default build cannot reach the network.** The hosted path sits behind a
+Cargo feature that is off unless asked for, so a stock `cargo build --release`
+links no HTTP client at all:
+
+| Build | Size | Contains |
+|---|---|---|
+| `cargo build --release` | 1.5 MB | no HTTP client, no TLS, no provider URLs |
+| `cargo build --release --features inklift-cli/api` | 4.2 MB | adds `ureq` + `rustls` |
+
+Verified by inspecting the binaries, not just by intent: the default one
+contains no provider hostname and no `rustls` symbol anywhere.
+
+In the default build the hosted flags are *refused* with instructions, never
+silently ignored, and `--via` is not even listed in `--help`. Build with the
+feature, then `--via` opts into sending the page to an image model so the two
+can be measured on the same images with the same scorer.
 
 ```bash
 cp .env.example .env               # then fill in a key

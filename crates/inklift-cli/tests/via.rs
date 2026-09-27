@@ -1,3 +1,6 @@
+//! Behaviour of a build with the hosted-model path linked in.
+#![cfg(feature = "api")]
+
 use inklift_cli::parse_args;
 
 fn args(list: &[&str]) -> Vec<String> {

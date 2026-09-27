@@ -14,7 +14,13 @@ OUT=${OUT:-compare-out}
 
 BIN=./target/release/inklift
 SCORE=./target/release/inklift-score
-[ -x "$BIN" ] || { echo "build first: cargo build --release" >&2; exit 1; }
+[ -x "$BIN" ] || { echo "build first: cargo build --release --features inklift-cli/api" >&2; exit 1; }
+# The default build has no hosted-model path linked in, by design.
+if ! "$BIN" --help 2>&1 | grep -q -- "--via"; then
+    echo "this inklift was built offline-only; the comparison needs the hosted path." >&2
+    echo "rebuild with: cargo build --release --features inklift-cli/api" >&2
+    exit 1
+fi
 
 rm -rf "$OUT"
 mkdir -p "$OUT/local" "$OUT/$PROVIDER"
