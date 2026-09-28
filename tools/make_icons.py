@@ -48,8 +48,8 @@ def spans(occupied, gap, min_len):
 def dehalo(v):
     if v < 110:
         return 0
-    if v < 170:
-        return min(255, (v - 110) * 255 // 60)
+    if v <= 170:
+        return (v - 110) * 255 // 60
     return v
 
 

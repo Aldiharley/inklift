@@ -29,8 +29,7 @@ fn every_action_icon_is_a_square_transparent_png() {
         assert!(img.color().has_alpha(), "{file} has no alpha channel");
         let rgba = img.to_rgba8();
         let (w, h) = rgba.dimensions();
-        assert_eq!(w, h, "{file} is {w}x{h}, not square");
-        assert!(w >= 54, "{file} is {w} px; it needs 54 to stay sharp at 3x its 18 px size");
+        assert_eq!((w, h), (54, 54), "{file} is {w}x{h}; icons are stored at 54 px, 3x the 18 px they are shown at");
         for (x, y) in [(0, 0), (w - 1, 0), (0, h - 1), (w - 1, h - 1)] {
             assert_eq!(rgba.get_pixel(x, y)[3], 0, "{file} corner ({x},{y}) is not transparent");
         }
