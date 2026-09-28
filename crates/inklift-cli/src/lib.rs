@@ -15,9 +15,6 @@ pub use shot::{
     run_shot,
 };
 
-mod dotenv;
-pub use dotenv::{env_or, parse_env_file, read_env_file};
-
 mod score;
 pub use score::{
     SCORE_USAGE, ScoreConfig, Row, Summary, load_mask, normalize_stem, parse_score_args, run_score,
@@ -107,38 +104,6 @@ use std::path::PathBuf;
 
 use inklift_core::Options;
 
-#[cfg(feature = "api")]
-pub const USAGE: &str = "\
-inklift - lift handwriting off a photograph
-
-USAGE:
-    inklift <IMAGE> [OPTIONS]
-
-OPTIONS:
-    -o, --output <PATH>   Where to write the result   [default: <IMAGE>.ink.png]
-        --white           Ink on a white background instead of transparent
-        --both            Write both exports, suffixed .ink.png and .white.png
-        --k <FLOAT>       Sauvola k; raise it to keep less faint ink  [default: 0.20]
-        --window <PX>     Sauvola window radius                       [default: 12]
-        --min-area <PX>   Discard connected components below this     [default: 8]
-        --radius <PX>     Paper-estimate radius; must exceed the stroke half-width
-        --feather <PX>    How far soft edges reach past the stroke    [default: 1]
-        --invert          The ink is lighter than its background, as in a
-                          screenshot of a dark-themed application
-        --ink <COLOUR>    Repaint the ink: #RRGGBB, #RGB, black or white.
-                          Use --ink white to paste onto a dark slide.
-    -q, --quiet           Suppress the summary line
-    -h, --help            Show this message
-
-HOSTED MODEL (opt-in, sends the image to a third party):
-        --via <NAME>      gemini or openai. Off unless given.
-        --model <ID>      Override the provider's default model
-        --prompt <TEXT>   Override the instruction sent with the image
-        --api-key <KEY>   Override the provider's environment variable
-        --timeout <SECS>  Request timeout                          [default: 120]
-";
-
-#[cfg(not(feature = "api"))]
 pub const USAGE: &str = "\
 inklift - lift handwriting off a photograph
 
@@ -169,17 +134,6 @@ pub enum Output {
     Both,
 }
 
-/// Settings for the opt-in hosted-model path.
-#[cfg(feature = "api")]
-#[derive(Clone, Debug)]
-pub struct ViaConfig {
-    pub provider: inklift_api::Provider,
-    pub model: String,
-    pub prompt: String,
-    pub api_key: Option<String>,
-    pub timeout_secs: u64,
-}
-
 #[derive(Clone, Debug)]
 pub struct Config {
     pub input: PathBuf,
@@ -193,9 +147,6 @@ pub struct Config {
     /// Override the pen colour the extractor found. `None` keeps the real one.
     pub ink: Option<[f32; 3]>,
     pub quiet: bool,
-    /// `None` runs everything locally. Set only by an explicit `--via`.
-    #[cfg(feature = "api")]
-    pub via: Option<ViaConfig>,
 }
 
 fn default_output(input: &Path) -> PathBuf {
@@ -217,14 +168,6 @@ pub fn parse_args(argv: &[String]) -> Result<Config> {
     let mut options = Options::default();
     let mut ink: Option<[f32; 3]> = None;
     let mut quiet = false;
-    #[cfg(feature = "api")]
-    let (mut via, mut model, mut prompt, mut api_key, mut timeout_secs) = (
-        None::<inklift_api::Provider>,
-        None::<String>,
-        None::<String>,
-        None::<String>,
-        120u64,
-    );
 
     let mut i = 0;
     while i < argv.len() {
@@ -250,24 +193,6 @@ pub fn parse_args(argv: &[String]) -> Result<Config> {
             "--invert" => options.invert = true,
             "--ink" => ink = Some(inklift_core::parse_ink_color(&value("--ink")?)?),
             "--radius" => options.background_radius = Some(value("--radius")?.parse()?),
-            #[cfg(feature = "api")]
-            "--via" => via = Some(value("--via")?.parse()?),
-            #[cfg(feature = "api")]
-            "--model" => model = Some(value("--model")?),
-            #[cfg(feature = "api")]
-            "--prompt" => prompt = Some(value("--prompt")?),
-            #[cfg(feature = "api")]
-            "--api-key" => api_key = Some(value("--api-key")?),
-            #[cfg(feature = "api")]
-            "--timeout" => timeout_secs = value("--timeout")?.parse()?,
-            #[cfg(not(feature = "api"))]
-            "--via" | "--model" | "--prompt" | "--api-key" | "--timeout" => {
-                return Err(format!(
-                    "{arg} needs the hosted-model path, which this build does not \
-                     include.\nRebuild with: cargo build --release --features inklift-cli/api"
-                )
-                .into());
-            }
             other if other.starts_with('-') => {
                 return Err(format!("unknown option {other}\n\n{USAGE}").into());
             }
@@ -283,26 +208,6 @@ pub fn parse_args(argv: &[String]) -> Result<Config> {
     let output_is_default = output.is_none();
     let output = output.unwrap_or_else(|| default_output(&input));
 
-    #[cfg(feature = "api")]
-    let via = match via {
-        Some(provider) => Some(ViaConfig {
-            model: model.unwrap_or_else(|| provider.default_model().to_string()),
-            prompt: prompt.unwrap_or_else(|| inklift_api::DEFAULT_PROMPT.to_string()),
-            provider,
-            api_key,
-            timeout_secs,
-        }),
-        None => {
-            // Silently ignoring these would leave the user believing they used
-            // a model they never called.
-            for (flag, given) in [("--model", model.is_some()), ("--prompt", prompt.is_some())] {
-                if given {
-                    return Err(format!("{flag} only applies with --via").into());
-                }
-            }
-            None
-        }
-    };
     Ok(Config {
         input,
         output,
@@ -311,8 +216,6 @@ pub fn parse_args(argv: &[String]) -> Result<Config> {
         options,
         ink,
         quiet,
-        #[cfg(feature = "api")]
-        via,
     })
 }
 
@@ -321,8 +224,7 @@ pub fn parse_args(argv: &[String]) -> Result<Config> {
 pub struct Report {
     /// Fraction of the page carrying meaningful ink.
     pub coverage: f32,
-    /// The estimated pen colour, relative to the paper. The hosted path returns
-    /// a finished image rather than an opacity field, so there is none to report.
+    /// The estimated pen colour, relative to the paper.
     pub ink_color: Option<[f32; 3]>,
     pub written: Vec<PathBuf>,
     /// Which path produced this, for the summary line and for the record.
@@ -338,10 +240,6 @@ fn with_suffix(path: &Path, suffix: &str) -> PathBuf {
 
 /// Load, extract, and write whichever exports the config asks for.
 pub fn run(config: &Config) -> Result<Report> {
-    #[cfg(feature = "api")]
-    if let Some(via) = &config.via {
-        return run_via(config, via);
-    }
     let planes = load_rgb(&config.input)?;
     let (w, h) = (planes[0].width(), planes[0].height());
     // Silently returning an empty page for a dark-themed source is the most
@@ -383,53 +281,6 @@ pub fn run(config: &Config) -> Result<Report> {
         ink_color: Some(result.ink_color()),
         written,
         source: "local".into(),
-    })
-}
-
-#[cfg(feature = "api")]
-fn mime_for(path: &Path) -> &'static str {
-    match path.extension().and_then(|e| e.to_str()).map(str::to_ascii_lowercase).as_deref() {
-        Some("jpg") | Some("jpeg") => "image/jpeg",
-        Some("webp") => "image/webp",
-        _ => "image/png",
-    }
-}
-
-#[cfg(feature = "api")]
-/// Send the page to a hosted model and write back whatever it returns.
-///
-/// The reply is a finished image, not an opacity field, so it is written
-/// verbatim: re-encoding it here would make the comparison measure our
-/// post-processing rather than the model.
-fn run_via(config: &Config, via: &ViaConfig) -> Result<Report> {
-    let bytes = std::fs::read(&config.input)?;
-    // A .env beside the project is a convenience; a real exported variable wins.
-    let from_file = read_env_file(Path::new(".env"));
-    let key = inklift_api::resolve_key(via.provider, via.api_key.as_deref(), |name| {
-        env_or(&from_file, name)
-    })?;
-
-    let produced = inklift_api::generate(
-        via.provider,
-        &via.model,
-        &key,
-        &bytes,
-        mime_for(&config.input),
-        &via.prompt,
-        config.mode == Output::Transparent,
-        std::time::Duration::from_secs(via.timeout_secs),
-    )?;
-
-    std::fs::write(&config.output, &produced)?;
-    let coverage = load_mask(&config.output, 128, false)
-        .map(|m| m.coverage())
-        .unwrap_or(0.0);
-
-    Ok(Report {
-        coverage,
-        ink_color: None,
-        written: vec![config.output.clone()],
-        source: format!("{}:{}", via.provider.name(), via.model),
     })
 }
 

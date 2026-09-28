@@ -15,16 +15,13 @@ name = "inklift"
 path = "src/main.rs"
 
 [features]
-# Offline by default: without this, no HTTP client is linked into the binary
-# at all, and the hosted flags are refused rather than silently ignored.
+# Screen capture is opt-in: a default build links no capture stack at all.
 default = []
-api = ["dep:inklift-api"]
 shot = ["dep:inklift-shot"]
 inklift-shot = ["dep:inklift-shot"]
 
 [dependencies]
 image = { version = "0.25.9", default-features = false, features = ["png", "jpeg", "webp", "bmp", "tiff"] }
-inklift-api = { version = "0.1.0", path = "../inklift-api", optional = true }
 inklift-core = { path = "../inklift-core" }
 inklift-shot = { version = "0.1.0", path = "../inklift-shot", optional = true }
 

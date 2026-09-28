@@ -129,7 +129,7 @@ fn write_bar(path: &std::path::Path, w: usize, h: usize, scale: usize) {
     inklift_cli::save_rgba(path, w, h, &rgba).unwrap();
 }
 
-/// Hosted models return whatever size they like. Without help, that makes the
+/// Other tools return whatever size they like. Without help, that makes the
 /// comparison impossible, so the mismatch has to be explained, not just refused.
 #[test]
 fn a_size_mismatch_is_reported_with_both_dimensions() {
@@ -179,7 +179,7 @@ fn resize_lets_a_differently_sized_result_be_scored() {
     }
 }
 
-/// Transparent PNGs are exactly what the hosted path returns, and dropping the
+/// Transparent PNGs are exactly what inklift itself writes, and dropping the
 /// alpha channel leaves cleared pixels holding whatever RGB sat underneath -
 /// usually black, which then counts as solid ink. Transparent must read as
 /// background, the same as white paper does.

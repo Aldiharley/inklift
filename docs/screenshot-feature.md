@@ -1,7 +1,7 @@
 # Screenshot capture — spec, plan, and validation
 
 Status: **implemented and manually validated; clipboard paste unconfirmed**
-Feature flag: `shot` (off by default, like `api`)
+Feature flag: `shot` (off by default)
 
 ## 1. Goal
 
@@ -107,7 +107,7 @@ Cancelling must leave **no** files behind.
 ## 4. Architecture
 
 New crate `inklift-shot`, behind the `shot` feature, so the default binary is
-untouched — same pattern as `api`.
+untouched.
 
 ```
 crates/inklift-shot/src/

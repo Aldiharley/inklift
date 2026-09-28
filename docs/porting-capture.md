@@ -35,7 +35,6 @@ crates/
   inklift-core    the whole extraction algorithm. ZERO dependencies, pure std.
   inklift-cli     image decoding, the `inklift` command, the DIBCO scorer.
   inklift-shot    screen capture, region selection, clipboard.   <- your work
-  inklift-api     optional hosted-model path (off by default).
   inklift-gui     the Tauri desktop app.                         <- your work
 ```
 

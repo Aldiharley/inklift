@@ -8,6 +8,5 @@ samples/*.white.png
 samples/contact_sheet.png
 bench/
 trial/
-compare-out/
 shots/
 crates/inklift-gui/gen/

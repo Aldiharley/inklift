@@ -34,8 +34,8 @@ jobs:
       - name: Test, offline build
         run: cargo test --workspace
 
-      - name: Test, with the optional features on
-        run: cargo test --workspace --features inklift-cli/api,inklift-cli/shot
+      - name: Test, with screen capture on
+        run: cargo test --workspace --features inklift-cli/shot
 
       # Reported, not enforced. The remaining warnings are clippy's
       # needless_range_loop in numeric code, where the indexed form is the
@@ -61,8 +61,8 @@ jobs:
       - name: Test, offline build
         run: cargo test --workspace
 
-      - name: Test, with the optional features on
-        run: cargo test --workspace --features inklift-cli/api,inklift-cli/shot
+      - name: Test, with screen capture on
+        run: cargo test --workspace --features inklift-cli/shot
 
   # The reason the GUI is portable at all is that each platform's capture code
   # is behind its own cfg, and a platform with no backend yet gets

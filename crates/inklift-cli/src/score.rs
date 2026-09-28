@@ -20,7 +20,7 @@ OPTIONS:
         --threshold <0-255> Grey level below which a pixel counts as ink  [default: 128]
         --invert           Treat light pixels as ink instead of dark
         --resize           Resample results to the ground-truth size first.
-                           Needed for hosted models, which return their own size.
+                           For results from a tool that changes image size.
     -h, --help             Show this message
 ";
 
@@ -31,8 +31,8 @@ pub struct ScoreConfig {
     pub threshold: u8,
     pub invert: bool,
     pub csv: Option<PathBuf>,
-    /// Resample results to the ground-truth size before scoring. Needed for
-    /// hosted models, which do not preserve dimensions.
+    /// Resample results to the ground-truth size before scoring, for results
+    /// from a tool that does not preserve dimensions.
     pub resize: bool,
 }
 

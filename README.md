@@ -10,7 +10,7 @@
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-2B6486.svg)](LICENSE)
 [![Rust 1.85+](https://img.shields.io/badge/Rust-1.85%2B-2B6486.svg)](https://www.rust-lang.org)
 [![Core dependencies: 0](https://img.shields.io/badge/core%20dependencies-0-2B6486.svg)](crates/inklift-core/Cargo.toml)
-[![Offline by default](https://img.shields.io/badge/network-off%20by%20default-2B6486.svg)](#offline-by-default-and-verifiably-so)
+[![Offline](https://img.shields.io/badge/network-offline-2B6486.svg)](#offline-and-verifiably-so)
 
 Point inklift at anything with writing in it — a phone photo of a notebook page,
 a scan, a region of your screen — and it hands back just the ink. The paper is
@@ -25,7 +25,7 @@ page or a photograph and have it look like it was written there.
 <p align="center"><sub>A photo of calligraphy, and what <code>inklift photo.png --window 30</code>
 lifted off it. The lettering is an AI-generated sample made for this demo.</sub></p>
 
-It runs entirely on your machine. A stock build links no HTTP client at all.
+It runs entirely on your machine. The command-line tool links no HTTP client at all.
 
 ```console
 $ inklift photo.jpg --both
@@ -66,8 +66,8 @@ swap, not a re-extraction**. Nothing is recomputed and no quality is lost.
   cleanly onto any background.
 - **Real pen colour, recoverable.** The extractor reports the actual ink colour
   it found; `--ink` repaints it to anything you like without touching opacity.
-- **Offline by default.** The hosted-model path and the screen-capture path are
-  both Cargo features that are off unless you ask for them.
+- **Offline.** Nothing is ever sent anywhere. Screen capture is a Cargo feature
+  that is off unless you ask for it.
 - **Zero dependencies in the core.** `inklift-core` is plain `std`, so the same
   code drops into a CLI, a Tauri backend, a WASM bundle or a mobile app.
 - **Live-screen region selection** (Linux/X11 and Windows): drag a box on your
@@ -93,14 +93,11 @@ cargo build --release -p inklift-cli
 That produces two binaries in `target/release/`: `inklift` and `inklift-score`.
 No system libraries, no build script, no network access during the build.
 
-Optional features, each off by default:
+One optional feature, off by default:
 
 ```bash
 # screen capture + live region selection (Linux/X11 and Windows)
 cargo build --release -p inklift-cli --features shot
-
-# hosted-model comparison path (adds an HTTP client)
-cargo build --release -p inklift-cli --features api
 ```
 
 ## Quickstart
@@ -367,75 +364,32 @@ published DIBCO set. The next honest step for this project is a golden set of
 real captures; until that exists, treat these figures as a regression baseline
 and nothing more.
 
-## Offline by default, and verifiably so
+## Offline, and verifiably so
 
-A stock build cannot reach the network, because the code that could is not
-linked into it. This is checked by inspecting the binary, not just asserted:
+Everything happens on your machine. Nothing in inklift sends an image
+anywhere, and the command-line tool cannot reach the network at all, because
+no code that could is linked into it. That is checked by inspecting the
+binary, not just asserted:
 
 ```console
 $ cargo build --release -p inklift-cli
 $ strings -a target/release/inklift | grep -ci rustls
 0
-$ strings -a target/release/inklift | grep -ci generativelanguage
-0
 ```
 
-Build with `--features api` and the same probes return thousands of hits. The
-same holds for the capture stack: a default binary contains no `x11rb` or
+The same holds for the capture stack: a default binary contains no `x11rb` or
 `arboard` symbols at all.
 
 Measured on this machine (rustc 1.97.1, x86-64 Linux, unstripped):
 
 | Build | Size | Contains |
 |---|---|---|
-| `cargo build --release -p inklift-cli` | 2.4 MB | no HTTP client, no TLS, no provider URLs, no capture stack |
+| `cargo build --release -p inklift-cli` | 2.4 MB | no HTTP client, no TLS, no capture stack |
 | `--features shot` | 3.1 MB | adds `x11rb` + `arboard` (on Windows, `windows` instead of `x11rb`) |
-| `--features api` | 5.1 MB | adds `ureq` + `rustls` |
 
-In a default build the hosted flags are **refused with a rebuild instruction**,
-never silently ignored, and `--via` is not even listed in `--help`:
-
-```console
-$ inklift page.jpg --via gemini
---via needs the hosted-model path, which this build does not include.
-Rebuild with: cargo build --release --features inklift-cli/api
-```
-
-## Optional: comparing against a hosted model
-
-The `api` feature exists for one purpose — measuring the local pipeline against
-a hosted image model on the same images with the same scorer.
-
-```bash
-cargo build --release -p inklift-cli --features api
-export GEMINI_API_KEY=...            # or put it in a .env beside the project
-inklift page.jpg --via gemini --white -o api/page.png
-
-./compare.sh pages/ groundtruth/ gemini
-```
-
-`compare.sh` runs both paths over a folder and prints two score tables plus
-per-image CSVs. Hosted results come back at whatever size the model chooses, so
-score them with `--resize`.
-
-|  | `--via gemini` | `--via openai` |
-|---|---|---|
-| Default model | `gemini-3-pro-image` | `gpt-image-2` |
-| Endpoint | `generateContent` | `/v1/images/edits` |
-| Real alpha channel | no | yes, via `background=transparent` |
-| Key variable | `GEMINI_API_KEY` | `OPENAI_API_KEY` |
-
-Keys come from the environment or from a `.env` beside the project; a real
-exported variable always wins over the file, and an empty entry is ignored
-rather than shadowing one that is set. Passing `--model` or `--prompt` without
-`--via` is an error rather than a no-op, so you can never believe you called a
-model you did not.
-
-> **What is and is not verified here.** Request construction, response parsing,
-> both providers' error shapes, base64 against the RFC vectors, and key
-> resolution are all covered by tests. **The network call itself is not** — no
-> live request has ever been made from this code. The first real call may still
-> surface an auth, quota or schema surprise.
+The desktop app makes no network requests of its own either. It is built on
+Tauri, whose dependency tree does include an HTTP client, so the binary-level
+claim above is made for the command-line tool only.
 
 ## Limitations
 
@@ -474,7 +428,6 @@ Stated up front, because finding them yourself is worse:
 | [`inklift-core`](crates/inklift-core) | **none** | The whole algorithm. Plain `std`, so it drops into a Tauri backend, a WASM bundle or a mobile app unchanged. |
 | [`inklift-cli`](crates/inklift-cli) | `image` | Image decoding, the `inklift` command line, and the `inklift-score` harness. |
 | [`inklift-shot`](crates/inklift-shot) | `arboard`; `x11rb` on Linux, `windows` on Windows | X11 and Windows capture, live region selection, clipboard. Behind the `shot` feature. |
-| [`inklift-api`](crates/inklift-api) | `ureq`, `serde_json` | Optional hosted-model path. Behind the `api` feature. |
 | [`inklift-gui`](crates/inklift-gui) | `tauri` | The desktop app. |
 
 Keeping the core dependency-free is deliberate: it is what makes the desktop
@@ -483,14 +436,13 @@ app a wiring job rather than a port.
 ## Build and test
 
 ```bash
-cargo test                                 # 202 tests, offline build
-cargo test --features inklift-cli/api      # 203 tests
-cargo test --features inklift-cli/shot     # 225 tests
-cargo test --features inklift-cli/api,inklift-cli/shot   # 227 tests
+cargo test                                 # 179 tests
+cargo test --features inklift-cli/shot     # 202 tests
 ```
 
-No run touches the network. Counts measured on this checkout with rustc 1.97.1;
-they move as tests are added, so treat them as a floor rather than a promise.
+No run touches the network. Counts measured on Windows 11 with rustc 1.96.0;
+on Linux the X11 tests stand in for the Windows ones, so the totals differ.
+They move as tests are added, so treat them as a floor rather than a promise.
 Note that `cargo test` covers the whole workspace, the Tauri app included, so
 it needs the GUI prerequisites above; `cargo test -p inklift-core -p
 inklift-cli` does not.
