@@ -95,14 +95,18 @@ fn the_csp_permits_the_apps_own_scripts() {
 }
 
 /// Every window the backend opens must have a page to load.
+///
+/// Finds the pages by reading `main.rs` rather than listing them here: the
+/// list this replaced named only the old overlay's page, so once that window
+/// was removed the test checked nothing at all.
 #[test]
 fn every_window_target_exists() {
     let main_rs = fs::read_to_string(gui_dir().join("src/main.rs")).expect("main.rs");
-    for page in ["overlay.html"] {
-        if main_rs.contains(page) {
+    for literal in main_rs.split('"').skip(1).step_by(2) {
+        if literal.ends_with(".html") && !literal.contains(char::is_whitespace) {
             assert!(
-                gui_dir().join("ui").join(page).exists(),
-                "{page} is opened by the backend but missing from ui/"
+                gui_dir().join("ui").join(literal).exists(),
+                "{literal} is opened by the backend but missing from ui/"
             );
         }
     }
@@ -299,16 +303,27 @@ fn no_ui_catch_block_only_writes_to_the_console() {
 /// backend, but the window's button was not, so on Windows it invited a click
 /// whose only possible outcome was an error message. Offering an action that
 /// cannot work is a worse failure than not offering it.
+///
+/// Keyed on inklift-shot's `unsupported` backend, which is what a platform
+/// without capture gets. It once looked for a refusal message in `main.rs`;
+/// when the message moved into inklift-shot this returned early and checked
+/// nothing.
 #[test]
 fn the_ui_can_tell_whether_screen_capture_is_available() {
-    let src = fs::read_to_string(gui_dir().join("src/main.rs")).expect("main.rs");
-    if !src.contains("NO_CAPTURE") {
+    let unsupported = gui_dir().join("../inklift-shot/src/unsupported.rs");
+    if !unsupported.exists() {
         return; // every platform can capture; nothing to disable
     }
+    let src = fs::read_to_string(gui_dir().join("src/main.rs")).expect("main.rs");
+    assert!(
+        src.contains("CAPTURE_SUPPORTED"),
+        "capture_supported must answer from inklift_shot::CAPTURE_SUPPORTED, or \
+         it can disagree with the backend actually compiled in"
+    );
     assert!(
         src.contains("fn capture_supported"),
-        "the backend refuses capture on some platforms but exposes no way for \
-         the window to ask, so the button cannot be disabled"
+        "some platforms have no capture backend, but the backend exposes no way \
+         for the window to ask, so the button cannot be disabled"
     );
     let ui: String = fs::read_dir(gui_dir().join("ui"))
         .expect("ui/")

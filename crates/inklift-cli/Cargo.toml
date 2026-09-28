@@ -18,7 +18,6 @@ path = "src/main.rs"
 # Screen capture is opt-in: a default build links no capture stack at all.
 default = []
 shot = ["dep:inklift-shot"]
-inklift-shot = ["dep:inklift-shot"]
 
 [dependencies]
 image = { version = "0.25.9", default-features = false, features = ["png", "jpeg", "webp", "bmp", "tiff"] }

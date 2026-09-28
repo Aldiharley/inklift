@@ -1,7 +1,11 @@
 # inklift — Visual System Spec v1
 
 Design system for a tray-resident desktop app that lifts handwriting off
-photographs onto a real alpha channel. Tauri / HTML+CSS, Linux-first.
+photographs onto a real alpha channel. Tauri / HTML+CSS, on Linux and Windows.
+
+> **Status:** the palette and its pigment names are what the app uses. The
+> glass material system of §2 (the `data-glass` tiers and `--mat-*` materials)
+> is not implemented; the shipped UI in `crates/inklift-gui/ui/` is flat.
 
 ## 1. Design direction
 

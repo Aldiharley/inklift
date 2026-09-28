@@ -4,6 +4,13 @@ Source: UX architecture pass, 2026-09-27. Grounded in the shipped CLI behaviour
 (README, `docs/screenshot-feature.md`, the invert detector) and in the Greenshot
 tray menu, used as a structural reference.
 
+> **This is the design target, larger than what is built.** The app builds only
+> what works (see `build_tray` in `crates/inklift-gui/src/main.rs`). Two parts
+> are out of date: the frozen-frame overlay in §2 was replaced by selection on
+> the live screen ([`docs/live-selection.md`](../docs/live-selection.md)), and
+> capture now works on Windows as well as X11, so "needs X11" below applies to
+> Wayland only.
+
 ## 1. Product framing
 
 **What it is.** inklift is a cutout tool for handwriting. You point it at

@@ -3,6 +3,15 @@
 Status: **implemented and manually validated; clipboard paste unconfirmed**
 Feature flag: `shot` (off by default)
 
+> **Read this as the original spec, not the current design.** Since it was
+> written: the full-screen frozen-frame overlay it describes was replaced by
+> selection on the live screen (see *Superseded* at the end, and
+> [`live-selection.md`](live-selection.md)), so `winit` and `softbuffer` are
+> gone; capture now works on Windows as well as X11
+> ([`porting-capture.md`](porting-capture.md)); and the `api` feature named in
+> the dated validation record of §7 has been removed. The record is left as it
+> was measured.
+
 ## 1. Goal
 
 `inklift shot` — drag a box around handwriting anywhere on screen, and get the
