@@ -76,6 +76,28 @@ jobs:
         with:
           targets: x86_64-pc-windows-msvc
       - uses: swatinem/rust-cache@v2
+
+      # tauri-build compiles the app's Windows resources (icon, version info)
+      # even under `cargo check`, through embed-resource, which on a non-Windows
+      # host shells out to `llvm-rc` and fails with NotAttempted("llvm-rc") when
+      # it is not on PATH. The runner ships LLVM only under versioned paths, so
+      # point embed-resource at the newest one; its preprocessing step uses the
+      # runner's gcc, which is already there.
+      - name: A Windows resource compiler for tauri-build
+        run: |
+          rc=$(ls /usr/lib/llvm-*/bin/llvm-rc 2>/dev/null | sort -V | tail -1)
+          if [ -z "$rc" ]; then
+            sudo apt-get update
+            sudo apt-get install -y llvm
+            rc=$(command -v llvm-rc || ls /usr/lib/llvm-*/bin/llvm-rc 2>/dev/null | sort -V | tail -1)
+          fi
+          if [ -z "$rc" ]; then
+            echo "::error::no llvm-rc found or installable; tauri-build cannot compile Windows resources"
+            exit 1
+          fi
+          "$rc" /? | head -1
+          echo "RC_x86_64_pc_windows_msvc=$rc" >> "$GITHUB_ENV"
+
       - name: The desktop app must still compile for Windows
         run: cargo check --target x86_64-pc-windows-msvc -p inklift-gui
 
