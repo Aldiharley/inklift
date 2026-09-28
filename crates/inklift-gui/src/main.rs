@@ -436,6 +436,16 @@ struct OutputItems {
     white: tauri::menu::CheckMenuItem<tauri::Wry>,
 }
 
+/// The glyph drawn for dark Linux panels is near-white, and on the light Windows
+/// 11 taskbar it measured 1.17:1 — there, clickable, and impossible to find.
+/// Windows users run either theme, so Windows gets the app icon, a solid tile
+/// that holds 3:1 on both (`tests/tray_contract.rs` measures whichever file
+/// this picks).
+#[cfg(windows)]
+const TRAY_ICON: &[u8] = include_bytes!("../icons/32x32.png");
+#[cfg(not(windows))]
+const TRAY_ICON: &[u8] = include_bytes!("../icons/tray.png");
+
 /// Build the tray.
 ///
 /// The menu designed in `design/ux-architecture.md` is larger than this: it
@@ -485,7 +495,7 @@ fn build_tray(app: &tauri::AppHandle) -> tauri::Result<()> {
     app.manage(OutputItems { alpha: out_alpha, white: out_white });
 
     TrayIconBuilder::with_id("inklift")
-        .icon(tauri::image::Image::from_bytes(include_bytes!("../icons/tray.png"))?)
+        .icon(tauri::image::Image::from_bytes(TRAY_ICON)?)
         .tooltip("inklift — lift handwriting off any image")
         .menu(&menu)
         .show_menu_on_left_click(false)
@@ -566,6 +576,31 @@ fn open_from_dialog(app: &tauri::AppHandle) -> Result<(), String> {
         .map_err(|e| format!("could not hand the image to the window: {e}"))
 }
 
+/// The window's X hides it; the app stays in the tray until Quit.
+///
+/// The design is tray-resident, and every tray item assumes the process — and
+/// the window, hidden or not — outlives a close. Tauri's default is to end the
+/// process when its last window closes, taking the tray icon with it; measured
+/// on Windows, one click on X left neither (`tests/win_lifecycle.rs`). The
+/// window is hidden rather than destroyed because the tray's Open, Copy again
+/// and Lift items all talk to it.
+///
+/// Windows only, because only there is a tray guaranteed to exist. GNOME shows
+/// none without an extension, and hiding the window there would leave a
+/// running app with no way back to it.
+#[cfg(windows)]
+fn close_to_tray(window: &tauri::Window, event: &tauri::WindowEvent) {
+    if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+        if window.label() == "main" {
+            api.prevent_close();
+            match window.hide() {
+                Ok(()) => eprintln!("inklift: window closed to the tray"),
+                Err(e) => eprintln!("inklift: could not hide the window: {e}"),
+            }
+        }
+    }
+}
+
 fn main() {
     // WebKitGTK's DMABUF renderer hands back a surface that never paints under
     // virtualised or software GL: the window maps, shows its background, and
@@ -583,7 +618,11 @@ fn main() {
         unsafe { std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1") };
     }
 
-    tauri::Builder::default()
+    let builder = tauri::Builder::default();
+    #[cfg(windows)]
+    let builder = builder.on_window_event(close_to_tray);
+
+    builder
         .plugin(tauri_plugin_dialog::init())
         .manage(App::default())
         .invoke_handler(tauri::generate_handler![

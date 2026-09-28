@@ -254,6 +254,13 @@ white, black and ink — for checking the alpha channel against something other
 than the colour you cut it from; hold-to-compare against the source; and
 Save / Copy.
 
+It also lives in the system tray: lift from the screen or a file, switch the
+output, copy the last result again, reopen the window, or quit. On Windows,
+closing the window keeps inklift running in the tray until you choose **Quit
+inklift**. Windows 11 files new tray icons under *Show hidden icons* (the `^`
+by the clock); to keep it in view, turn inklift on under Settings →
+Personalization → Taskbar → Other system tray icons.
+
 Building it needs the standard [Tauri 2 Linux
 prerequisites](https://v2.tauri.app/start/prerequisites/) (WebKitGTK and
 friends). The app sets `WEBKIT_DISABLE_DMABUF_RENDERER` for you when you have

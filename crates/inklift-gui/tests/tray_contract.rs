@@ -73,6 +73,69 @@ fn the_tray_icon_asset_exists_and_is_light_enough_for_a_dark_panel() {
     assert_eq!(&bytes[1..4], b"PNG", "tray icon must be a PNG");
 }
 
+/// The icon file the Windows build puts in the tray: the one under
+/// `#[cfg(windows)]` if the source picks per platform, otherwise the only one.
+fn windows_tray_icon(src: &str) -> String {
+    let mut chosen = None;
+    let mut prev = "";
+    for line in src.lines() {
+        if let Some(i) = line.find("include_bytes!(\"../icons/") {
+            let name = line[i + 25..].split('"').next().unwrap().to_string();
+            if prev.trim() == "#[cfg(windows)]" {
+                return name;
+            }
+            chosen.get_or_insert(name);
+        }
+        prev = line;
+    }
+    chosen.expect("the tray icon is not embedded with include_bytes!")
+}
+
+/// WCAG relative luminance of an sRGB colour.
+fn luminance([r, g, b]: [u8; 3]) -> f64 {
+    let lin = |c: u8| {
+        let c = c as f64 / 255.0;
+        if c <= 0.04045 { c / 12.92 } else { ((c + 0.055) / 1.055).powf(2.4) }
+    };
+    0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b)
+}
+
+fn contrast(a: f64, b: f64) -> f64 {
+    (a.max(b) + 0.05) / (a.min(b) + 0.05)
+}
+
+/// Windows users run either taskbar theme, so the icon must stand out on both.
+///
+/// The icon drawn for dark Linux panels is a near-white glyph. On the light
+/// Windows 11 taskbar it measured 1.17:1 — present, clickable, and invisible —
+/// which a check of the file's existence could never notice. 3:1 is the WCAG
+/// floor for graphical objects, taken on the mean luminance of the icon's
+/// opaque pixels.
+#[test]
+fn the_icon_windows_puts_in_the_tray_stands_out_on_light_and_dark_taskbars() {
+    let name = windows_tray_icon(&main_rs());
+    let img = inklift_cli::open_image(&gui().join("icons").join(&name))
+        .unwrap_or_else(|e| panic!("icons/{name}: {e}"))
+        .to_rgba8();
+    let opaque: Vec<f64> = img
+        .pixels()
+        .filter(|p| p.0[3] > 128)
+        .map(|p| luminance([p.0[0], p.0[1], p.0[2]]))
+        .collect();
+    assert!(!opaque.is_empty(), "icons/{name} has no opaque pixels");
+    let icon = opaque.iter().sum::<f64>() / opaque.len() as f64;
+
+    for (theme, bg) in [("light", [0xF3, 0xF3, 0xF3]), ("dark", [0x1C, 0x1C, 0x1C])] {
+        let ratio = contrast(icon, luminance(bg));
+        eprintln!("icons/{name} against the {theme} taskbar: {ratio:.2}:1");
+        assert!(
+            ratio >= 3.0,
+            "icons/{name} is {ratio:.2}:1 against the {theme} Windows taskbar — too \
+             faint to find in the tray"
+        );
+    }
+}
+
 /// Tauri does not build tray support unless the feature is on, and the failure
 /// is a compile error rather than a missing icon — but the icon and the feature
 /// are edited in different files, so pin them together.
