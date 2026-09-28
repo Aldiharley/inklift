@@ -13,6 +13,10 @@ use windows::Win32::Graphics::Gdi::{
     UpdateWindow,
 };
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
+use windows::Win32::System::RemoteDesktop::{
+    WTS_CURRENT_SERVER_HANDLE, WTS_CURRENT_SESSION, WTS_SESSIONSTATE_LOCK, WTSFreeMemory,
+    WTSINFOEXW, WTSQuerySessionInformationW, WTSSessionInfoEx,
+};
 use windows::Win32::System::StationsAndDesktops::{
     CloseDesktop, DESKTOP_CONTROL_FLAGS, DESKTOP_READOBJECTS, OpenInputDesktop,
 };
@@ -20,15 +24,19 @@ use windows::Win32::UI::HiDpi::{
     AreDpiAwarenessContextsEqual, GetThreadDpiAwarenessContext,
 };
 use windows::Win32::UI::WindowsAndMessaging::*;
-use windows::core::{PCWSTR, w};
+use windows::core::{PCWSTR, PWSTR, w};
 
-/// The input desktop is what the user sees. Opening it fails under a service,
-/// on a locked workstation and behind a UAC prompt — all places there is
-/// nothing to capture.
+/// The input desktop is what the user sees. Opening it fails under a service
+/// and behind a UAC prompt — places there is nothing to capture. It does not
+/// fail on the lock screen, hence the second check.
 fn desktop() -> bool {
     match unsafe { OpenInputDesktop(DESKTOP_CONTROL_FLAGS(0), false, DESKTOP_READOBJECTS) } {
         Ok(d) => {
             let _ = unsafe { CloseDesktop(d) };
+            if locked() {
+                eprintln!("skipped: the session is locked");
+                return false;
+            }
             true
         }
         Err(e) => {
@@ -36,6 +44,37 @@ fn desktop() -> bool {
             false
         }
     }
+}
+
+/// The Windows 10/11 lock screen is LockApp.exe drawing a topmost window over
+/// the ordinary Default desktop, so `OpenInputDesktop` still succeeds behind
+/// it. Measured with the PC locked: the red swatch of
+/// `known_colours_on_screen_are_read_back_exactly` read back as [54, 30, 86],
+/// the lock-screen wallpaper, and `WindowFromPoint` there belonged to LockApp.
+/// Ask the session instead: on Windows 11 26200 its SessionFlags read 0
+/// (WTS_SESSIONSTATE_LOCK) behind the lock screen and 1 unlocked, with
+/// `OpenInputDesktop` succeeding both times. Windows 7 swapped the meaning of
+/// WTS_SESSIONSTATE_LOCK and _UNLOCK; the project targets 10 1703 and later.
+fn locked() -> bool {
+    let mut info = PWSTR::null();
+    let mut len = 0;
+    if let Err(e) = unsafe {
+        WTSQuerySessionInformationW(
+            Some(WTS_CURRENT_SERVER_HANDLE),
+            WTS_CURRENT_SESSION,
+            WTSSessionInfoEx,
+            &mut info,
+            &mut len,
+        )
+    } {
+        // Run rather than skip: a query that breaks should show up as failing
+        // tests, not as a suite that quietly stops testing anything.
+        eprintln!("could not read the session's lock state ({e}); assuming unlocked");
+        return false;
+    }
+    let flags = unsafe { (*(info.0 as *const WTSINFOEXW)).Data.WTSInfoExLevel1.SessionFlags };
+    unsafe { WTSFreeMemory(info.0.cast()) };
+    flags == WTS_SESSIONSTATE_LOCK as i32
 }
 
 fn capturer() -> Option<WindowsCapturer> {

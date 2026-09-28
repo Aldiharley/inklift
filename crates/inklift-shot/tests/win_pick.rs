@@ -29,6 +29,10 @@ use inklift_shot::{
 use windows::Win32::Foundation::{COLORREF, HWND, LPARAM, LRESULT, POINT, WPARAM};
 use windows::Win32::Graphics::Gdi::{CreateSolidBrush, UpdateWindow};
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
+use windows::Win32::System::RemoteDesktop::{
+    WTS_CURRENT_SERVER_HANDLE, WTS_CURRENT_SESSION, WTS_SESSIONSTATE_LOCK, WTSFreeMemory,
+    WTSINFOEXW, WTSQuerySessionInformationW, WTSSessionInfoEx,
+};
 use windows::Win32::System::StationsAndDesktops::{
     CloseDesktop, DESKTOP_CONTROL_FLAGS, DESKTOP_READOBJECTS, OpenInputDesktop,
 };
@@ -36,7 +40,7 @@ use windows::Win32::System::Threading::GetCurrentProcessId;
 use windows::Win32::UI::HiDpi::{DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2, SetThreadDpiAwarenessContext};
 use windows::Win32::UI::Input::KeyboardAndMouse::*;
 use windows::Win32::UI::WindowsAndMessaging::*;
-use windows::core::w;
+use windows::core::{PWSTR, w};
 
 /// Outline colour the selector paints, as RGB.
 const ACCENT: [u8; 3] = [0x4D, 0x8F, 0xBF];
@@ -47,6 +51,10 @@ fn desktop() -> bool {
     match unsafe { OpenInputDesktop(DESKTOP_CONTROL_FLAGS(0), false, DESKTOP_READOBJECTS) } {
         Ok(d) => {
             let _ = unsafe { CloseDesktop(d) };
+            if locked() {
+                eprintln!("skipped: the session is locked");
+                return false;
+            }
             true
         }
         Err(e) => {
@@ -54,6 +62,28 @@ fn desktop() -> bool {
             false
         }
     }
+}
+
+/// The lock screen does not stop `OpenInputDesktop` succeeding; see `locked`
+/// in tests/win_live.rs for the measurement.
+fn locked() -> bool {
+    let mut info = PWSTR::null();
+    let mut len = 0;
+    if let Err(e) = unsafe {
+        WTSQuerySessionInformationW(
+            Some(WTS_CURRENT_SERVER_HANDLE),
+            WTS_CURRENT_SESSION,
+            WTSSessionInfoEx,
+            &mut info,
+            &mut len,
+        )
+    } {
+        eprintln!("could not read the session's lock state ({e}); assuming unlocked");
+        return false;
+    }
+    let flags = unsafe { (*(info.0 as *const WTSINFOEXW)).Data.WTSInfoExLevel1.SessionFlags };
+    unsafe { WTSFreeMemory(info.0.cast()) };
+    flags == WTS_SESSIONSTATE_LOCK as i32
 }
 
 /// The cursor, and the selector that owns it, are global: two drags cannot run

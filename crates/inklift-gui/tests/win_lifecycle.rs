@@ -18,16 +18,24 @@ use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
 use windows::Win32::Foundation::{HWND, LPARAM, WPARAM};
+use windows::Win32::System::RemoteDesktop::{
+    WTS_CURRENT_SERVER_HANDLE, WTS_CURRENT_SESSION, WTS_SESSIONSTATE_LOCK, WTSFreeMemory,
+    WTSINFOEXW, WTSQuerySessionInformationW, WTSSessionInfoEx,
+};
 use windows::Win32::System::StationsAndDesktops::{
     CloseDesktop, DESKTOP_CONTROL_FLAGS, DESKTOP_READOBJECTS, OpenInputDesktop,
 };
 use windows::Win32::UI::WindowsAndMessaging::*;
-use windows::core::BOOL;
+use windows::core::{BOOL, PWSTR};
 
 fn desktop() -> bool {
     match unsafe { OpenInputDesktop(DESKTOP_CONTROL_FLAGS(0), false, DESKTOP_READOBJECTS) } {
         Ok(d) => {
             let _ = unsafe { CloseDesktop(d) };
+            if locked() {
+                eprintln!("skipped: the session is locked");
+                return false;
+            }
             true
         }
         Err(e) => {
@@ -35,6 +43,28 @@ fn desktop() -> bool {
             false
         }
     }
+}
+
+/// The lock screen does not stop `OpenInputDesktop` succeeding; see `locked`
+/// in crates/inklift-shot/tests/win_live.rs for the measurement.
+fn locked() -> bool {
+    let mut info = PWSTR::null();
+    let mut len = 0;
+    if let Err(e) = unsafe {
+        WTSQuerySessionInformationW(
+            Some(WTS_CURRENT_SERVER_HANDLE),
+            WTS_CURRENT_SESSION,
+            WTSSessionInfoEx,
+            &mut info,
+            &mut len,
+        )
+    } {
+        eprintln!("could not read the session's lock state ({e}); assuming unlocked");
+        return false;
+    }
+    let flags = unsafe { (*(info.0 as *const WTSINFOEXW)).Data.WTSInfoExLevel1.SessionFlags };
+    unsafe { WTSFreeMemory(info.0.cast()) };
+    flags == WTS_SESSIONSTATE_LOCK as i32
 }
 
 /// Kills the app on the way out, whatever the test decided.

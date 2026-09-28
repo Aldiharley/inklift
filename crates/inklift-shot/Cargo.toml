@@ -32,13 +32,15 @@ x11rb = { version = "0.14.0", features = ["randr", "xtest"] }
 
 [target.'cfg(windows)'.dev-dependencies]
 # SendInput drives a real drag in tests/win_pick.rs; OpenInputDesktop tells the
-# desktop-bound tests whether there is a desktop to test against at all; GDI
-# paints the known colours tests/win_live.rs expects to read back.
+# desktop-bound tests whether there is a desktop to test against at all, and
+# RemoteDesktop's WTSQuerySessionInformationW whether it is behind the lock
+# screen; GDI paints the known colours tests/win_live.rs expects to read back.
 windows = { version = "0.61", features = [
     "Win32_Foundation",
     "Win32_Graphics_Dwm",
     "Win32_Graphics_Gdi",
     "Win32_System_LibraryLoader",
+    "Win32_System_RemoteDesktop",
     "Win32_System_StationsAndDesktops",
     "Win32_System_Threading",
     "Win32_UI_HiDpi",
