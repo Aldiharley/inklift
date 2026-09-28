@@ -100,11 +100,11 @@ jobs:
           echo "--- installers anywhere in the workspace ---"
           find . -type f \
             \( -name '*.deb' -o -name '*.AppImage' -o -name '*.dmg' \
-               -o -name '*.msi' -o -name '*.exe' \) || true
+               -o -name '*.msi' -o -name '*-setup.exe' \) || true
           mkdir -p dist
           find . -type f -path '*/release/*' \
             \( -name '*.deb' -o -name '*.AppImage' -o -name '*.dmg' \
-               -o -name '*.msi' -o -name '*.exe' \) \
+               -o -name '*.msi' -o -name '*-setup.exe' \) \
             -exec cp {} dist/ \;
           echo "--- collected ---"
           ls -lh dist
