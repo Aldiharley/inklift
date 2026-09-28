@@ -126,6 +126,25 @@ impl Extraction {
         self
     }
 
+    /// Remove ink by hand: multiply opacity by `keep` (1 keeps, 0 erases).
+    ///
+    /// The pen colour is left as extracted. It was estimated from all the ink,
+    /// and erasing a stray mark must not shift the colour of what remains.
+    pub fn erased(mut self, keep: &Grid) -> Self {
+        assert!(
+            self.alpha.same_shape(keep),
+            "erase mask is {}x{} but the result is {}x{}",
+            keep.width(),
+            keep.height(),
+            self.alpha.width(),
+            self.alpha.height()
+        );
+        for (a, k) in self.alpha.data_mut().iter_mut().zip(keep.data()) {
+            *a *= k.clamp(0.0, 1.0);
+        }
+        self
+    }
+
     pub fn width(&self) -> usize {
         self.alpha.width()
     }
