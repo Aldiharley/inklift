@@ -78,17 +78,28 @@ jobs:
           projectPath: crates/inklift-gui
           args: ${{ matrix.args }}
 
+      # Collect with find rather than an upload glob. The glob missed on both
+      # macOS and Windows -- a universal build lands under
+      # target/universal-apple-darwin/, not target/ -- and the job still went
+      # green because nothing had been uploaded and nothing said so.
+      - name: Collect the bundles
+        if: "!startsWith(github.ref, 'refs/tags/')"
+        shell: bash
+        run: |
+          mkdir -p dist
+          find target -path '*/bundle/*' \
+            \( -name '*.deb' -o -name '*.AppImage' -o -name '*.dmg' \
+               -o -name '*.msi' -o -name '*.exe' \) \
+            -exec cp {} dist/ \;
+          echo "collected:"
+          ls -lh dist
+
       - name: Upload the bundles
         if: "!startsWith(github.ref, 'refs/tags/')"
         uses: actions/upload-artifact@v4
         with:
           name: inklift-${{ matrix.platform }}
-          path: |
-            target/release/bundle/**/*.deb
-            target/release/bundle/**/*.AppImage
-            target/release/bundle/**/*.dmg
-            target/release/bundle/**/*.app
-            target/**/release/bundle/**/*.dmg
-            target/release/bundle/**/*.msi
-            target/release/bundle/**/*.exe
-          if-no-files-found: warn
+          path: dist/*
+          # An empty artifact is a build that produced nothing while reporting
+          # success. Fail instead.
+          if-no-files-found: error
