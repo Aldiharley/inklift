@@ -252,6 +252,32 @@ document.addEventListener("keyup", (e) => { if (e.code === "Space") peek(false);
   }
 
   try {
+    // the tray owns no state; it announces the choice and the window applies it
+    await listen("tray-output", (e) => {
+      const v = e.payload;
+      output = v;
+      $("outSeg").querySelectorAll("button").forEach((b) =>
+        b.setAttribute("aria-pressed", String(b.dataset.v === v)));
+    });
+    wired.push("tray-output");
+  } catch (e) {
+    failed.push("tray-output: " + e);
+  }
+
+  try {
+    await listen("tray-copy", async () => {
+      if (!loaded) { toast("Nothing has been lifted yet.", true); return; }
+      try {
+        await invoke("copy", { params: params() });
+        toast("Copied — paste it anywhere");
+      } catch (err) { toast(String(err), true); }
+    });
+    wired.push("tray-copy");
+  } catch (e) {
+    failed.push("tray-copy: " + e);
+  }
+
+  try {
     await listen("pick-failed", (e) => toast(String(e.payload), true));
     wired.push("pick-failed");
   } catch (e) {

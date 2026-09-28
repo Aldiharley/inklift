@@ -36,7 +36,7 @@
       "icons/128x128.png",
       "icons/icon.png"
     ],
-    "category": "Graphics",
+    "category": "Graphics and Design",
     "shortDescription": "Lift handwriting off any image",
     "longDescription": "Extracts handwriting from a photo or screenshot onto a transparent or white background."
   }

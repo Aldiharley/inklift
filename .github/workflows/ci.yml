@@ -1,0 +1,61 @@
+name: Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      # `cargo test --workspace` builds the Tauri app, so the webview and tray
+      # libraries have to be present even though no window is opened.
+      - name: Install Linux build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            libgtk-3-dev
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - uses: swatinem/rust-cache@v2
+
+      # The X11 tests check for DISPLAY and skip when there is none, so the
+      # headless runner exercises everything else.
+      - name: Test, offline build
+        run: cargo test --workspace
+
+      - name: Test, with the optional features on
+        run: cargo test --workspace --features inklift-cli/api,inklift-cli/shot
+
+      # Reported, not enforced. The remaining warnings are clippy's
+      # needless_range_loop in numeric code, where the indexed form is the
+      # clearer one, and `cargo fmt` would currently rewrite 241 files. Turning
+      # either into a gate is the repository owner's call, not a side effect of
+      # adding CI.
+      - name: Clippy (advisory)
+        run: cargo clippy --workspace --all-targets
+        continue-on-error: true
+
+  # The reason the GUI is portable at all is that its X11 calls are behind
+  # cfg(target_os = "linux"). Nothing but a compile for another platform proves
+  # that, and it is cheap, so it runs on every push.
+  portability:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+      - uses: swatinem/rust-cache@v2
+      - name: The desktop app must still compile for Windows
+        run: cargo check --target x86_64-pc-windows-msvc -p inklift-gui

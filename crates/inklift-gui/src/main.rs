@@ -150,6 +150,34 @@ fn open_file(path: String, state: State<App>) -> Result<Loaded, String> {
     Ok(adopt(&state, img.to_rgba8(), name, None))
 }
 
+/// What the capture commands say where there is no backend for the platform.
+///
+/// The extraction pipeline is pure `std` and runs anywhere; only the screen
+/// grab is X11-bound. Saying so is better than shipping a build that silently
+/// lacks a third of the menu.
+#[cfg(not(target_os = "linux"))]
+const NO_CAPTURE: &str = "Lifting from the screen needs X11, and this build has \
+no capture backend for your platform yet. Open a file or drop one on the window \
+instead — extraction itself works everywhere.";
+
+#[cfg(not(target_os = "linux"))]
+#[tauri::command]
+fn capture(_x: i32, _y: i32, _w: u32, _h: u32, _state: State<App>) -> Result<Loaded, String> {
+    Err(NO_CAPTURE.into())
+}
+
+#[cfg(not(target_os = "linux"))]
+#[tauri::command]
+fn screens() -> Result<Vec<String>, String> {
+    Err(NO_CAPTURE.into())
+}
+
+#[cfg(not(target_os = "linux"))]
+fn run_pick(_app: &tauri::AppHandle) -> Result<(), String> {
+    Err(NO_CAPTURE.into())
+}
+
+#[cfg(target_os = "linux")]
 #[tauri::command]
 fn capture(x: i32, y: i32, w: u32, h: u32, state: State<App>) -> Result<Loaded, String> {
     use inklift_shot::{Capturer, Rect, X11Capturer};
@@ -166,6 +194,7 @@ fn capture(x: i32, y: i32, w: u32, h: u32, state: State<App>) -> Result<Loaded, 
     ))
 }
 
+#[cfg(target_os = "linux")]
 #[tauri::command]
 fn screens() -> Result<Vec<String>, String> {
     use inklift_shot::{Capturer, X11Capturer};
@@ -177,6 +206,8 @@ fn screens() -> Result<Vec<String>, String> {
 }
 
 /// A selection smaller than this on either axis is a misclick, not a capture.
+/// Only the X11 pick path consults it.
+#[cfg(target_os = "linux")]
 const MIN_SELECTION: u32 = 8;
 
 /// Let the user drag a region on the real screen.
@@ -206,6 +237,7 @@ fn begin_pick(app: tauri::AppHandle) -> Result<(), String> {
 /// capture last**. Nothing paints a copy of the desktop, so the only thing that
 /// could end up wrongly inside a capture is our own window, and it is hidden
 /// before the grab and shown again on every path out.
+#[cfg(target_os = "linux")]
 fn run_pick(app: &tauri::AppHandle) -> Result<(), String> {
     use inklift_shot::{Capturer, Outcome, X11Capturer, pick_live_region, virtual_bounds};
 
@@ -405,6 +437,147 @@ fn ui_ready(what: String) {
     eprintln!("inklift: {what} wired up");
 }
 
+/// The three output radio items, kept so the handler can move the dot.
+///
+/// Tauri has no radio group, so exclusivity is maintained here. The tray and
+/// the window must agree about the output shape, and the window owns that
+/// state, so the tray announces a change and lets the frontend apply it rather
+/// than keeping a second copy that could drift.
+struct OutputItems {
+    alpha: tauri::menu::CheckMenuItem<tauri::Wry>,
+    white: tauri::menu::CheckMenuItem<tauri::Wry>,
+}
+
+/// Build the tray.
+///
+/// The menu designed in `design/ux-architecture.md` is larger than this: it
+/// also has lift-from-clipboard, lift-the-last-region-again, retune, settings,
+/// ink and source submenus and global hotkeys. None of those exist in the
+/// backend yet, and an item that opens nothing is the same lie as a button that
+/// does nothing. Only what works is shown; the rest arrives with its feature.
+fn build_tray(app: &tauri::AppHandle) -> tauri::Result<()> {
+    use tauri::menu::{CheckMenuItem, Menu, MenuItem, PredefinedMenuItem, Submenu};
+    use tauri::tray::TrayIconBuilder;
+
+    // greyed out rather than missing, so it is clear the feature exists and
+    // simply has no backend here yet
+    let lift_screen = MenuItem::with_id(
+        app, "lift-screen", "Lift from screen…",
+        cfg!(target_os = "linux"), None::<&str>,
+    )?;
+    let lift_file = MenuItem::with_id(app, "lift-file", "Lift from a file…", true, None::<&str>)?;
+
+    let out_alpha = CheckMenuItem::with_id(app, "out-alpha", "Transparent PNG", true, true, None::<&str>)?;
+    let out_white = CheckMenuItem::with_id(app, "out-white", "Grey ink on white", true, false, None::<&str>)?;
+    // The designed menu had a third option, "Both files". The window has no
+    // such output — its control offers transparent or grey-on-white and
+    // nothing else — so listing it would be a menu item that cannot do what it
+    // says. It returns when the window can write both.
+    let output = Submenu::with_items(app, "Output", true, &[&out_alpha, &out_white])?;
+
+    let copy_again = MenuItem::with_id(app, "copy-again", "Copy again", true, None::<&str>)?;
+    let open = MenuItem::with_id(app, "open", "Open inklift", true, None::<&str>)?;
+    let quit = MenuItem::with_id(app, "quit", "Quit inklift", true, None::<&str>)?;
+
+    let menu = Menu::with_items(
+        app,
+        &[
+            &lift_screen,
+            &lift_file,
+            &PredefinedMenuItem::separator(app)?,
+            &output,
+            &PredefinedMenuItem::separator(app)?,
+            &copy_again,
+            &PredefinedMenuItem::separator(app)?,
+            &open,
+            &quit,
+        ],
+    )?;
+
+    app.manage(OutputItems { alpha: out_alpha, white: out_white });
+
+    TrayIconBuilder::with_id("inklift")
+        .icon(tauri::image::Image::from_bytes(include_bytes!("../icons/tray.png"))?)
+        .tooltip("inklift — lift handwriting off any image")
+        .menu(&menu)
+        .show_menu_on_left_click(false)
+        .on_menu_event(|app, event| {
+            let id = event.id.as_ref();
+            eprintln!("inklift: tray {id}");
+            match id {
+                "lift-screen" => {
+                    let h = app.clone();
+                    std::thread::spawn(move || {
+                        if let Err(e) = run_pick(&h) {
+                            eprintln!("inklift: pick failed: {e}");
+                            let _ = h.emit_to("main", "pick-failed", e);
+                        }
+                    });
+                }
+                "lift-file" => {
+                    let h = app.clone();
+                    std::thread::spawn(move || {
+                        if let Err(e) = open_from_dialog(&h) {
+                            eprintln!("inklift: open failed: {e}");
+                            let _ = h.emit_to("main", "pick-failed", e);
+                        }
+                    });
+                }
+                "out-alpha" | "out-white" => {
+                    let items = app.state::<OutputItems>();
+                    // one dot, moved by hand: there is no radio group here
+                    let _ = items.alpha.set_checked(id == "out-alpha");
+                    let _ = items.white.set_checked(id == "out-white");
+                    let which = if id == "out-white" { "white" } else { "alpha" };
+                    let _ = app.emit_to("main", "tray-output", which);
+                }
+                "copy-again" => {
+                    // the extraction parameters live in the window; ask it to do
+                    // the copy rather than keeping a second copy of them here
+                    let _ = app.emit_to("main", "tray-copy", ());
+                }
+                "open" => show_main(app),
+                "quit" => app.exit(0),
+                _ => {}
+            }
+        })
+        .on_tray_icon_event(|tray, event| {
+            use tauri::tray::{MouseButton, MouseButtonState, TrayIconEvent};
+            if let TrayIconEvent::Click { button: MouseButton::Left, button_state: MouseButtonState::Up, .. } = event {
+                show_main(tray.app_handle());
+            }
+        })
+        .build(app)?;
+    Ok(())
+}
+
+fn show_main(app: &tauri::AppHandle) {
+    if let Some(w) = app.get_webview_window("main") {
+        let _ = w.show();
+        let _ = w.unminimize();
+        let _ = w.set_focus();
+    }
+}
+
+/// Pick a file and hand it to the window, for the tray's "Lift from a file…".
+///
+/// The window's own Open button returns the result to the caller; the tray has
+/// no caller, so the result travels the same way a screen pick does.
+fn open_from_dialog(app: &tauri::AppHandle) -> Result<(), String> {
+    let Some(path) = pick_open(app.clone()) else { return Ok(()) };
+    let img = inklift_cli::open_image(std::path::Path::new(&path))
+        .map_err(|e| format!("could not open that image: {e}"))?;
+    let name = std::path::Path::new(&path)
+        .file_name()
+        .map(|s| s.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "image".into());
+    let state = app.state::<App>();
+    let loaded = adopt(&state, img.to_rgba8(), name, None);
+    show_main(app);
+    app.emit_to("main", "picked", &loaded)
+        .map_err(|e| format!("could not hand the image to the window: {e}"))
+}
+
 fn main() {
     // WebKitGTK's DMABUF renderer hands back a surface that never paints under
     // virtualised or software GL: the window maps, shows its background, and
@@ -433,6 +606,8 @@ fn main() {
             if let Some(w) = app.get_webview_window("main") {
                 let _ = w.set_title("inklift");
             }
+            build_tray(app.handle())?;
+            eprintln!("inklift: tray ready");
             Ok(())
         })
         .run(tauri::generate_context!())

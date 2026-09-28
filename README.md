@@ -434,8 +434,9 @@ Stated up front, because finding them yourself is worse:
 - **Accuracy has only been measured on synthetic pages.** There is no
   benchmark here against a published DIBCO set or against real handwriting at
   scale.
-- **No CI yet.** The suite passes locally in all four build configurations;
-  there is no automated pipeline enforcing that on every push.
+- **Screen capture is Linux-only, including in the macOS and Windows builds.**
+  Those builds are real and the extraction pipeline works fully, but "Lift from
+  screen" is disabled there until a capture backend exists for the platform.
 
 ## Project layout
 
