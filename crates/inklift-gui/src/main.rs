@@ -11,7 +11,7 @@
 use std::sync::Mutex;
 
 use base64::Engine;
-use inklift_core::{Grid, Options, extract, looks_inverted, parse_ink_color};
+use inklift_core::{Extraction, Grid, Options, Stroke, extract, keep_mask, looks_inverted, parse_ink_color};
 use serde::{Deserialize, Serialize};
 use tauri::{Emitter, Manager, State};
 use tauri_plugin_dialog::DialogExt;
@@ -23,6 +23,17 @@ const PROXY_EDGE: u32 = 900;
 /// The source image, held for the life of a result so retuning is free.
 struct Source {
     image: image::RgbaImage,
+    /// The user's erasing, in this image's pixels. It belongs to this image
+    /// and is dropped with it: the same points mean nothing on another one.
+    strokes: Vec<Stroke>,
+}
+
+/// One eraser stroke as the page reports it: points in source-image pixels.
+#[derive(Debug, Deserialize)]
+struct StrokeIn {
+    points: Vec<[f32; 2]>,
+    radius: f32,
+    softness: f32,
 }
 
 #[derive(Default)]
@@ -131,7 +142,7 @@ fn adopt(state: &State<App>, image: image::RgbaImage, label: String, region: Opt
         region,
         looks_inverted: looks_inverted(&to_planes(&image)),
     };
-    *state.source.lock().unwrap() = Some(Source { image });
+    *state.source.lock().unwrap() = Some(Source { image, strokes: Vec::new() });
     out
 }
 
@@ -297,6 +308,18 @@ fn run_pick(app: &tauri::AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+/// Apply the user's erasing. Every output goes through here — the preview, and
+/// through `finished` the saved file and the clipboard — or an erased mark would
+/// come back in whichever one skipped it. `scale` maps the strokes' source
+/// pixels onto a proxy.
+fn apply_erasing(result: Extraction, strokes: &[Stroke], scale: f32) -> Extraction {
+    if strokes.is_empty() {
+        return result;
+    }
+    let keep = keep_mask(result.width(), result.height(), strokes, scale);
+    result.erased(&keep)
+}
+
 /// Extract and hand back a picture. `full` skips the proxy.
 #[tauri::command]
 fn render(params: Params, full: bool, state: State<App>) -> Result<Rendered, String> {
@@ -329,6 +352,7 @@ fn render(params: Params, full: bool, state: State<App>) -> Result<Rendered, Str
     if let Some(text) = &params.ink {
         result = result.with_ink_color(parse_ink_color(text)?);
     }
+    result = apply_erasing(result, &src.strokes, scale);
 
     let (w, h) = (working.width(), working.height());
     Ok(Rendered {
@@ -348,6 +372,7 @@ fn finished(params: &Params, src: &Source) -> Result<(u32, u32, Vec<u8>, Vec<u8>
     if let Some(text) = &params.ink {
         result = result.with_ink_color(parse_ink_color(text)?);
     }
+    result = apply_erasing(result, &src.strokes, 1.0);
     Ok((
         src.image.width(),
         src.image.height(),
@@ -386,6 +411,32 @@ fn copy(params: Params, state: State<App>) -> Result<(), String> {
     let src = guard.as_ref().ok_or("nothing loaded yet")?;
     let (w, h, rgba, _, _) = finished(&params, src)?;
     inklift_shot::put_image(w, h, &rgba)
+}
+
+/// Add one eraser stroke to the current image; returns how many it now has.
+#[tauri::command]
+fn erase_stroke(stroke: StrokeIn, state: State<App>) -> Result<usize, String> {
+    let mut guard = state.source.lock().unwrap();
+    let src = guard.as_mut().ok_or("nothing loaded yet")?;
+    src.strokes.push(Stroke::new(stroke.points, stroke.radius, stroke.softness)?);
+    Ok(src.strokes.len())
+}
+
+/// Drop the most recent stroke; returns how many are left.
+#[tauri::command]
+fn undo_erase(state: State<App>) -> Result<usize, String> {
+    let mut guard = state.source.lock().unwrap();
+    let src = guard.as_mut().ok_or("nothing loaded yet")?;
+    src.strokes.pop();
+    Ok(src.strokes.len())
+}
+
+#[tauri::command]
+fn clear_erase(state: State<App>) -> Result<(), String> {
+    let mut guard = state.source.lock().unwrap();
+    let src = guard.as_mut().ok_or("nothing loaded yet")?;
+    src.strokes.clear();
+    Ok(())
 }
 
 /// The file pickers live here rather than in JavaScript.
@@ -631,6 +682,7 @@ fn main() {
         .manage(App::default())
         .invoke_handler(tauri::generate_handler![
             open_file, capture, screens, render, save, copy,
+            erase_stroke, undo_erase, clear_erase,
             begin_pick, pick_open, pick_save, capture_supported, ui_ready
         ])
         .setup(|app| {
