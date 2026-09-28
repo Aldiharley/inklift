@@ -1649,6 +1649,7 @@ version = "0.1.0"
 dependencies = [
  "arboard",
  "inklift-core",
+ "windows",
  "x11rb 0.14.0",
 ]
 

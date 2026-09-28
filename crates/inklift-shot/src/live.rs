@@ -23,6 +23,7 @@ use x11rb::protocol::xproto::*;
 use x11rb::wrapper::ConnectionExt as _;
 
 use crate::geometry::Rect;
+use crate::outline::outline_bars;
 use crate::selection::{Outcome, SelectionState};
 
 /// Outline colour, matching the app's accent.
@@ -39,25 +40,6 @@ const XK_ESCAPE: u32 = 0xff1b;
 const DEADLINE: Duration = Duration::from_secs(120);
 /// Time for the server and any compositor to repaint once the bars are gone.
 const SETTLE: Duration = Duration::from_millis(90);
-
-/// The four bars that enclose `sel`, all of them strictly outside it.
-///
-/// Drawn outside on purpose: the capture is taken from the live screen after
-/// this outline is torn down, so a bar one pixel inside would be photographed
-/// as ink. The old overlay shipped precisely that bug.
-pub fn outline_bars(sel: &Rect, thickness: u32) -> [Rect; 4] {
-    let t = thickness.max(1);
-    let ti = t as i32;
-    // A zero-sized window is an X11 error rather than an invisible line.
-    let w = sel.width.max(1);
-    let h = sel.height.max(1);
-    [
-        Rect::new(sel.x - ti, sel.y - ti, w + 2 * t, t),
-        Rect::new(sel.x - ti, sel.y + h as i32, w + 2 * t, t),
-        Rect::new(sel.x - ti, sel.y, t, h),
-        Rect::new(sel.x + w as i32, sel.y, t, h),
-    ]
-}
 
 /// Let the user drag a region on the real screen.
 ///

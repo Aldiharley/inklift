@@ -9,8 +9,39 @@ license.workspace = true
 [dependencies]
 arboard = "3.6.1"
 inklift-core = { version = "0.1.0", path = "../inklift-core" }
+
+[target.'cfg(target_os = "linux")'.dependencies]
 x11rb = { version = "0.14.0", features = ["randr"] }
 
-[dev-dependencies]
+# 0.61 because Tauri already depends on exactly this version: matching it means
+# the GUI build compiles one copy of the bindings rather than two.
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.61", features = [
+    "Win32_Foundation",
+    "Win32_Graphics_Dwm",
+    "Win32_Graphics_Gdi",
+    "Win32_System_LibraryLoader",
+    "Win32_UI_HiDpi",
+    "Win32_UI_Input_KeyboardAndMouse",
+    "Win32_UI_WindowsAndMessaging",
+] }
+
+[target.'cfg(target_os = "linux")'.dev-dependencies]
 # xtest drives a real pointer drag in tests/live_pick.rs
 x11rb = { version = "0.14.0", features = ["randr", "xtest"] }
+
+[target.'cfg(windows)'.dev-dependencies]
+# SendInput drives a real drag in tests/win_pick.rs; OpenInputDesktop tells the
+# desktop-bound tests whether there is a desktop to test against at all; GDI
+# paints the known colours tests/win_live.rs expects to read back.
+windows = { version = "0.61", features = [
+    "Win32_Foundation",
+    "Win32_Graphics_Dwm",
+    "Win32_Graphics_Gdi",
+    "Win32_System_LibraryLoader",
+    "Win32_System_StationsAndDesktops",
+    "Win32_System_Threading",
+    "Win32_UI_HiDpi",
+    "Win32_UI_Input_KeyboardAndMouse",
+    "Win32_UI_WindowsAndMessaging",
+] }

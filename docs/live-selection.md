@@ -132,6 +132,63 @@ Two obligations follow, and both are load-bearing:
 | Grab refused (another client holds it) | Report it. Do not fall back to a silent no-op. |
 | A bar fails to paint | Selection still works; only the outline is missing. Degraded, not fatal — which is the point of the design. |
 
+## On Windows
+
+`win_live.rs` implements the same `pick_live_region` / `pick_live_region_ready`
+against Win32, and `win.rs` a GDI `WindowsCapturer`. The shape is the same —
+four bars strictly outside the selection, `SelectionState` deciding everything,
+all of it torn down before the grab — with three differences, each forced by
+something measured or documented rather than chosen.
+
+**There is one full-screen window after all.** X11's pointer grab takes every
+click on the display before it happens. Win32 has no equivalent: `SetCapture`
+only takes the mouse once a button has gone down over one of the caller's own
+windows, so something of ours has to be under the first press. That is the
+*catcher*, a layered window over the whole virtual desktop at alpha 1/255. It
+departs from "nothing covers the screen", so the reasons it is acceptable are
+worth stating:
+
+- It shows nothing. At alpha 1 no pixel changes by more than one level; the
+  user sees their live desktop, and nothing depends on the catcher compositing
+  correctly — if it did not paint at all, it would still be invisible.
+- It paints no copy of the desktop, so there is still nothing that can end up
+  in its own screenshot. It is destroyed with the bars before the capture.
+- The obvious alternative does not work. A colour-keyed layered window is
+  click-through wherever the key colour shows — here, everywhere — so the press
+  would land on the application underneath.
+
+**The bars are not hit-tested.** They are `WS_EX_LAYERED | WS_EX_TRANSPARENT`
+at full opacity. The first version left them ordinary windows, and the drag
+test (`tests/win_pick.rs`) caught selections coming back 2 px short about one
+run in three: a release over a bar was delivered to the bar, in coordinates
+relative to where the bar had been before it moved to follow the drag. With
+the bars transparent to the mouse every message goes to the catcher, which
+never moves; 90 drags since, none wrong.
+
+**The settle is a signal, not a sleep.** X11 needed 90 ms for the server and
+compositor to repaint. Under DWM every top-level window draws into its own
+surface, so destroying ours uncovers pixels already rendered; nothing
+underneath has to repaint. Measured with the opt-in
+`measure_how_long_the_outline_outlives_its_windows`: in 80 rounds the outline
+was never read back after its windows were destroyed, even with no wait at all.
+The selector still waits for two `DwmFlush` presents (~33 ms at 60 Hz), a real
+signal that scales with a slower display where a constant would not. Hiding the
+app's own window before the pick was measured the same way: off the screen
+33–36 ms after `SW_HIDE`, 80 ms under load, so `run_pick`'s 140 ms holds on
+Windows too.
+
+Coordinates are physical pixels throughout. The desktop app runs per-monitor v2
+DPI-aware (measured, not assumed); the CLI and the test binaries run unaware.
+Rather than depend on either, every Windows entry point switches its own thread
+to per-monitor v2 for the duration of the call, so monitors, grabs, the catcher
+and every mouse position share one coordinate space. This has only been
+exercised with every monitor at 100%; a mixed-DPI setup is untested.
+
+Escape cancels through the catcher's keyboard focus when Windows lets it take
+the foreground, and through a `GetAsyncKeyState` poll when it does not. A
+right-click, or losing the mouse capture to another window mid-drag, also
+cancels.
+
 ## What goes away
 
 `ui/overlay.html`, `ui/overlay.js`, the `Overlay` payload, `overlay_frame`,

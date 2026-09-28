@@ -9,8 +9,10 @@ fn out(name: &str) -> PathBuf {
     p
 }
 
+/// X11 needs a server to talk to. Windows has a desktop to read whenever a user
+/// is logged in, which is the only way these tests get run there.
 fn have_display() -> bool {
-    std::env::var("DISPLAY").is_ok()
+    cfg!(windows) || std::env::var("DISPLAY").is_ok()
 }
 
 fn args(list: &[&str]) -> Vec<String> {

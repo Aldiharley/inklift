@@ -174,8 +174,8 @@ invoke("capture_supported").then((ok) => {
   if (ok) return;
   const b = $("grabBtn");
   b.disabled = true;
-  b.title = "Lifting from the screen needs X11; this build has no capture " +
-            "backend for your platform yet. Open a file instead.";
+  b.title = "Lifting from the screen works on Linux (X11) and Windows; this " +
+            "build has no capture backend for your platform yet. Open a file instead.";
 }).catch(() => {});
 
 $("grabBtn").addEventListener("click", async () => {

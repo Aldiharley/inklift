@@ -46,9 +46,28 @@ jobs:
         run: cargo clippy --workspace --all-targets
         continue-on-error: true
 
-  # The reason the GUI is portable at all is that its X11 calls are behind
-  # cfg(target_os = "linux"). Nothing but a compile for another platform proves
-  # that, and it is cheap, so it runs on every push.
+  # Windows has its own capture backend, so it gets the whole suite on a real
+  # Windows machine rather than a compile check. GitHub's Windows runners are
+  # logged in to an interactive desktop, so tests/win_live.rs and
+  # tests/win_pick.rs capture the real screen and drive a real drag with
+  # SendInput; where there is no desktop they skip themselves.
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: swatinem/rust-cache@v2
+
+      - name: Test, offline build
+        run: cargo test --workspace
+
+      - name: Test, with the optional features on
+        run: cargo test --workspace --features inklift-cli/api,inklift-cli/shot
+
+  # The reason the GUI is portable at all is that each platform's capture code
+  # is behind its own cfg, and a platform with no backend yet gets
+  # inklift-shot's `unsupported` module instead. Nothing but a compile for each
+  # platform proves that, and it is cheap, so it runs on every push.
   portability:
     runs-on: ubuntu-22.04
     steps:
@@ -59,3 +78,15 @@ jobs:
       - uses: swatinem/rust-cache@v2
       - name: The desktop app must still compile for Windows
         run: cargo check --target x86_64-pc-windows-msvc -p inklift-gui
+
+  # macOS cannot be cross-checked from Linux: objc2's build scripts need the
+  # Apple toolchain. Until mac.rs exists this proves the `unsupported` path
+  # compiles, which is what keeps the macOS bundle building.
+  portability-macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: swatinem/rust-cache@v2
+      - name: The desktop app must still compile for macOS
+        run: cargo check -p inklift-gui --all-targets

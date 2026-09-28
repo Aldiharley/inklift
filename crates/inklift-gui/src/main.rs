@@ -150,38 +150,13 @@ fn open_file(path: String, state: State<App>) -> Result<Loaded, String> {
     Ok(adopt(&state, img.to_rgba8(), name, None))
 }
 
-/// What the capture commands say where there is no backend for the platform.
-///
-/// The extraction pipeline is pure `std` and runs anywhere; only the screen
-/// grab is X11-bound. Saying so is better than shipping a build that silently
-/// lacks a third of the menu.
-#[cfg(not(target_os = "linux"))]
-const NO_CAPTURE: &str = "Lifting from the screen needs X11, and this build has \
-no capture backend for your platform yet. Open a file or drop one on the window \
-instead — extraction itself works everywhere.";
-
-#[cfg(not(target_os = "linux"))]
-#[tauri::command]
-fn capture(_x: i32, _y: i32, _w: u32, _h: u32, _state: State<App>) -> Result<Loaded, String> {
-    Err(NO_CAPTURE.into())
-}
-
-#[cfg(not(target_os = "linux"))]
-#[tauri::command]
-fn screens() -> Result<Vec<String>, String> {
-    Err(NO_CAPTURE.into())
-}
-
-#[cfg(not(target_os = "linux"))]
-fn run_pick(_app: &tauri::AppHandle) -> Result<(), String> {
-    Err(NO_CAPTURE.into())
-}
-
-#[cfg(target_os = "linux")]
+/// The capture commands name no platform: `NativeCapturer` and
+/// `pick_live_region` are X11 on Linux and GDI on Windows, and where there is
+/// no backend yet they refuse with a message that says so.
 #[tauri::command]
 fn capture(x: i32, y: i32, w: u32, h: u32, state: State<App>) -> Result<Loaded, String> {
-    use inklift_shot::{Capturer, Rect, X11Capturer};
-    let cap = X11Capturer::new()?;
+    use inklift_shot::{Capturer, NativeCapturer, Rect};
+    let cap = NativeCapturer::new()?;
     let region = Rect::new(x, y, w, h);
     let frame = cap.grab(&region)?;
     let img = image::RgbaImage::from_raw(frame.width(), frame.height(), frame.to_rgba8())
@@ -194,11 +169,10 @@ fn capture(x: i32, y: i32, w: u32, h: u32, state: State<App>) -> Result<Loaded, 
     ))
 }
 
-#[cfg(target_os = "linux")]
 #[tauri::command]
 fn screens() -> Result<Vec<String>, String> {
-    use inklift_shot::{Capturer, X11Capturer};
-    Ok(X11Capturer::new()?
+    use inklift_shot::{Capturer, NativeCapturer};
+    Ok(NativeCapturer::new()?
         .monitors()?
         .into_iter()
         .map(|m| format!("{} {}", m.name, m.bounds))
@@ -212,12 +186,10 @@ fn screens() -> Result<Vec<String>, String> {
 /// an action whose only possible outcome was an error message.
 #[tauri::command]
 fn capture_supported() -> bool {
-    cfg!(target_os = "linux")
+    inklift_shot::CAPTURE_SUPPORTED
 }
 
 /// A selection smaller than this on either axis is a misclick, not a capture.
-/// Only the X11 pick path consults it.
-#[cfg(target_os = "linux")]
 const MIN_SELECTION: u32 = 8;
 
 /// Let the user drag a region on the real screen.
@@ -226,7 +198,9 @@ const MIN_SELECTION: u32 = 8;
 /// a `picked` event. A blocking pointer grab must never run on the thread that
 /// serves this command, because that is the GTK main thread: it would freeze
 /// the event loop for the whole drag, and `hide()`/`show()` below dispatch
-/// *through* that loop, so they would never be processed.
+/// *through* that loop, so they would never be processed. Windows has the same
+/// shape: the selector's windows belong to this worker thread, which pumps
+/// their messages itself while the app's own loop carries on.
 #[tauri::command]
 fn begin_pick(app: tauri::AppHandle) -> Result<(), String> {
     let handle = app.clone();
@@ -247,11 +221,10 @@ fn begin_pick(app: tauri::AppHandle) -> Result<(), String> {
 /// capture last**. Nothing paints a copy of the desktop, so the only thing that
 /// could end up wrongly inside a capture is our own window, and it is hidden
 /// before the grab and shown again on every path out.
-#[cfg(target_os = "linux")]
 fn run_pick(app: &tauri::AppHandle) -> Result<(), String> {
-    use inklift_shot::{Capturer, Outcome, X11Capturer, pick_live_region, virtual_bounds};
+    use inklift_shot::{Capturer, NativeCapturer, Outcome, pick_live_region, virtual_bounds};
 
-    let cap = X11Capturer::new()?;
+    let cap = NativeCapturer::new()?;
     let bounds = virtual_bounds(&cap.monitors()?).ok_or("no screens detected")?;
 
     let main = app.get_webview_window("main");
@@ -268,6 +241,11 @@ fn run_pick(app: &tauri::AppHandle) -> Result<(), String> {
         // twice the worst observed. Other tools land in the same range for the
         // same reason (scrot 80 ms, gnome-screenshot 200 ms with a comment
         // admitting there is no reliable signal to wait on instead).
+        //
+        // It holds on Windows too, measured rather than assumed: a top-level
+        // window with DWM's default transitions left the screen 33-36 ms after
+        // SW_HIDE, 80 ms at worst with the machine under load
+        // (`measure_how_long_a_hidden_app_window_stays_on_screen`).
         for _ in 0..100 {
             if !w.is_visible().unwrap_or(false) {
                 break;
@@ -469,11 +447,11 @@ fn build_tray(app: &tauri::AppHandle) -> tauri::Result<()> {
     use tauri::menu::{CheckMenuItem, Menu, MenuItem, PredefinedMenuItem, Submenu};
     use tauri::tray::TrayIconBuilder;
 
-    // greyed out rather than missing, so it is clear the feature exists and
-    // simply has no backend here yet
+    // where there is no backend, greyed out rather than missing, so it is
+    // clear the feature exists and simply has not reached this platform yet
     let lift_screen = MenuItem::with_id(
         app, "lift-screen", "Lift from screen…",
-        cfg!(target_os = "linux"), None::<&str>,
+        inklift_shot::CAPTURE_SUPPORTED, None::<&str>,
     )?;
     let lift_file = MenuItem::with_id(app, "lift-file", "Lift from a file…", true, None::<&str>)?;
 

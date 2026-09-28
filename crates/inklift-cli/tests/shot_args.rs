@@ -101,9 +101,10 @@ fn epoch_seconds_convert_to_the_right_civil_date() {
 #[test]
 fn the_raw_capture_sits_beside_the_result() {
     use std::path::Path;
+    // compared as paths: the separator is `\` on Windows
     assert_eq!(
-        inklift_cli::raw_path(Path::new("notes/page.png")).to_str().unwrap(),
-        "notes/page.raw.png"
+        inklift_cli::raw_path(Path::new("notes/page.png")),
+        Path::new("notes").join("page.raw.png")
     );
     assert_eq!(inklift_cli::raw_path(Path::new("x.png")).to_str().unwrap(), "x.raw.png");
 }

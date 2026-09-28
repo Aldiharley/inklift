@@ -63,8 +63,8 @@ swap, not a re-extraction**. Nothing is recomputed and no quality is lost.
   both Cargo features that are off unless you ask for them.
 - **Zero dependencies in the core.** `inklift-core` is plain `std`, so the same
   code drops into a CLI, a Tauri backend, a WASM bundle or a mobile app.
-- **Live-screen region selection** (Linux/X11): drag a box on your actual
-  desktop, with no overlay window covering it.
+- **Live-screen region selection** (Linux/X11 and Windows): drag a box on your
+  actual desktop, with no overlay painting a copy of it.
 - **A DIBCO scoring harness** with FM, pseudo-FM, PSNR and DRD, so you can
   measure changes instead of eyeballing them.
 - **A desktop app** (Tauri 2) with live retuning, hold-to-compare, and preview
@@ -89,7 +89,7 @@ No system libraries, no build script, no network access during the build.
 Optional features, each off by default:
 
 ```bash
-# screen capture + live region selection (Linux/X11 only)
+# screen capture + live region selection (Linux/X11 and Windows)
 cargo build --release -p inklift-cli --features shot
 
 # hosted-model comparison path (adds an HTTP client)
@@ -208,9 +208,11 @@ inklift shot --invert                   # dark-themed application
 
 **The drag happens on your live screen.** Nothing paints a copy of the desktop,
 so there is no overlay that could end up in its own screenshot. The only thing
-drawn is a thin outline around the selection — four override-redirect windows a
-few pixels thick — positioned *outside* the selection and torn down before the
-capture is taken.
+drawn is a thin outline around the selection — four windows a few pixels thick
+— positioned *outside* the selection and torn down before the capture is taken.
+On Windows an invisible window (alpha 1/255) also covers the desktop while you
+drag, because Windows only lets a program take the mouse once a button is
+already down over one of its own windows; it goes before the capture too.
 
 That design replaced a full-screen overlay that rendered as a solid black
 rectangle under software GL, leaving the user dragging blind. The reasoning,
@@ -226,12 +228,13 @@ data on request — so a command that sets it and exits copies nothing. `shot`
 re-invokes itself as a detached holder process that owns the selection until
 something else is copied.
 
-> **Platform status, stated plainly:** screen capture and live selection are
-> **X11 only** today. The capture layer is behind a `Capturer` trait so macOS
-> and Windows can slot in later, but no such backend exists yet, and native
-> Wayland has no client-side pointer grab — that path needs the XDG desktop
-> portal and is not implemented. The extraction pipeline itself is pure `std`
-> and platform-independent.
+> **Platform status, stated plainly:** screen capture and live selection work
+> on **X11** and **Windows** (GDI, Windows 10 1703 or later). macOS has no
+> backend yet; the capture layer is behind a `Capturer` trait so it can slot in
+> — see [`docs/porting-capture.md`](docs/porting-capture.md). Native Wayland has
+> no client-side pointer grab — that path needs the XDG desktop portal and is
+> not implemented. The extraction pipeline itself is pure `std` and
+> platform-independent.
 
 ## Desktop app
 
@@ -365,7 +368,7 @@ Measured on this machine (rustc 1.97.1, x86-64 Linux, unstripped):
 | Build | Size | Contains |
 |---|---|---|
 | `cargo build --release -p inklift-cli` | 2.4 MB | no HTTP client, no TLS, no provider URLs, no capture stack |
-| `--features shot` | 3.1 MB | adds `x11rb` + `arboard` |
+| `--features shot` | 3.1 MB | adds `x11rb` + `arboard` (on Windows, `windows` instead of `x11rb`) |
 | `--features api` | 5.1 MB | adds `ureq` + `rustls` |
 
 In a default build the hosted flags are **refused with a rebuild instruction**,
@@ -420,8 +423,13 @@ Stated up front, because finding them yourself is worse:
 - **Strokes under ~2 px cannot be recovered.** The information is not there.
   The low-resolution sample shows this as a washed-out pen colour, which is
   honest behaviour rather than a bug.
-- **Screen capture and live selection are X11 only.** No macOS, no Windows, no
+- **Screen capture and live selection are X11 and Windows only.** No macOS, no
   native Wayland. See the platform note above.
+- **Windows capture is untested on a scaled display.** It asks Windows for
+  physical pixels whatever the process's DPI awareness, and the tests check
+  that against each display's real mode — but they have only been run with
+  every monitor at 100%, where that check cannot fail. A mixed-DPI setup is the
+  case that would expose a mistake.
 - **Assumes roughly neutral paper.** All three channels are normalized by a
   shared luminance background, which costs one closing instead of three;
   strongly tinted paper would need per-channel estimation.
@@ -434,9 +442,9 @@ Stated up front, because finding them yourself is worse:
 - **Accuracy has only been measured on synthetic pages.** There is no
   benchmark here against a published DIBCO set or against real handwriting at
   scale.
-- **Screen capture is Linux-only, including in the macOS and Windows builds.**
-  Those builds are real and the extraction pipeline works fully, but "Lift from
-  screen" is disabled there until a capture backend exists for the platform.
+- **Screen capture is not in the macOS build yet.** That build is real and the
+  extraction pipeline works fully, but "Lift from screen" is disabled there
+  until a capture backend exists for it.
 
 ## Project layout
 
@@ -444,7 +452,7 @@ Stated up front, because finding them yourself is worse:
 |---|---|---|
 | [`inklift-core`](crates/inklift-core) | **none** | The whole algorithm. Plain `std`, so it drops into a Tauri backend, a WASM bundle or a mobile app unchanged. |
 | [`inklift-cli`](crates/inklift-cli) | `image` | Image decoding, the `inklift` command line, and the `inklift-score` harness. |
-| [`inklift-shot`](crates/inklift-shot) | `x11rb`, `arboard` | X11 capture, live region selection, clipboard. Behind the `shot` feature. |
+| [`inklift-shot`](crates/inklift-shot) | `arboard`; `x11rb` on Linux, `windows` on Windows | X11 and Windows capture, live region selection, clipboard. Behind the `shot` feature. |
 | [`inklift-api`](crates/inklift-api) | `ureq`, `serde_json` | Optional hosted-model path. Behind the `api` feature. |
 | [`inklift-gui`](crates/inklift-gui) | `tauri` | The desktop app. |
 

@@ -4,6 +4,22 @@
 joining the project cold. Everything you need to know is here or linked from
 here.
 
+> **Status: Windows is done; macOS (Task C) remains.** The Windows port is
+> described in [`live-selection.md`](live-selection.md#on-windows). It moved the
+> platform choice out of the GUI and into `inklift-shot/src/lib.rs`, so §8 is
+> now simpler than written below: `main.rs` and the CLI use `NativeCapturer`
+> and `pick_live_region` and name no platform, and a platform without a
+> backend gets `src/unsupported.rs`, whose refusal explains itself. `outline_bars`
+> now lives in `src/outline.rs`, shared by every selector.
+>
+> For macOS, the wiring is: add `mac.rs`, export it from `lib.rs` as
+> `NativeCapturer` plus `pick_live_region{,_ready}` the way `win.rs` and
+> `win_live.rs` are, add `target_os = "macos"` to `CAPTURE_SUPPORTED`, and delete
+> `unsupported.rs` — nothing in the GUI changes. `tests/win_pick.rs` shows how
+> to drive the selector safely on a live desktop: a sink window under the drag,
+> no press unless the selector's own window is under the cursor, and a mid-drag
+> photograph proving the outline is up before claiming it is gone.
+
 ---
 
 ## 1. What this project is

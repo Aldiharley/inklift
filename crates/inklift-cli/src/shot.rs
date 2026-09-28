@@ -228,13 +228,13 @@ impl ShotOutcome {
 
 /// Resolve where the pixels should come from, then capture and extract.
 pub fn run_shot(config: &ShotConfig) -> Result<ShotOutcome> {
-    use inklift_shot::{Capturer, X11Capturer};
+    use inklift_shot::{Capturer, NativeCapturer};
 
     if config.delay_secs > 0 {
         std::thread::sleep(std::time::Duration::from_secs(config.delay_secs));
     }
 
-    let capturer = X11Capturer::new()?;
+    let capturer = NativeCapturer::new()?;
     let monitors = capturer.monitors()?;
 
     let region = match config.source {
