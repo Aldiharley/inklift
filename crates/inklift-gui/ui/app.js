@@ -48,6 +48,8 @@ let source = null;      // the loaded image's size; strokes are in its pixels
 let erasing = false;
 let strokeCount = 0;    // how many strokes Rust holds, as it last said
 let stroke = null;      // the stroke being dragged, in source pixels
+let strokeBase = null;  // canvas pixels as they were when the stroke began (ImageData)
+let strokeCov = null;   // Float32Array: this stroke's per-pixel max coverage so far
 
 /* ── helpers ───────────────────────────────────────────────────────────── */
 
@@ -128,6 +130,9 @@ async function render(full) {
     el.ink.hidden = false; el.src.hidden = false;
     el.empty.hidden = true; el.peekHint.hidden = false;
     el.save.disabled = false; el.copy.disabled = false;
+    // Only turned on once there is a painted canvas to erase from — see
+    // adopt(), which disables these again the moment a new image starts loading.
+    el.eraser.disabled = false; el.eSize.disabled = false; el.eSoft.disabled = false;
 
     setReadout(r);
 
@@ -180,7 +185,12 @@ function adopt(info) {
   source = { width: info.width, height: info.height };
   strokeCount = 0;   // Rust dropped the old image's strokes with it
   stroke = null;
-  [el.eraser, el.eSize, el.eSoft].forEach((c) => { c.disabled = false; });
+  strokeBase = null;  // any in-progress cut was against the old image's pixels
+  strokeCov = null;
+  // Disabled again until the first paint of the new image: the canvas still
+  // shows the old one (or is empty, on the very first load) until then, and
+  // there is nothing correct for the eraser to cut yet.
+  el.eraser.disabled = true; el.eSize.disabled = true; el.eSoft.disabled = true;
   syncEraser();
   el.label.textContent = info.label + (info.region ? `  ${info.region}` : "");
   // Advisory only. The extracted pen is a fact about the source, so the flip is
@@ -270,43 +280,80 @@ segment("outSeg", (v) => { output = v; });
 // cuts the stroke out with the same fall-off as erase.rs, then the normal
 // preview → full refresh replaces it with what Rust will actually export.
 
-/** A radial gradient with erase.rs's profile: full strength to the inner
- *  radius, then a smoothstep to nothing at r. */
-function brushGradient(ctx, x, y, r, soft) {
-  const inner = Math.max(0, Math.min(r * (1 - soft), r - 1));
-  const g = ctx.createRadialGradient(x, y, 0, x, y, r);
-  for (let i = 0; i <= 8; i++) {
-    const t = 1 - i / 8;
-    g.addColorStop((inner + (r - inner) * (i / 8)) / r, `rgba(0,0,0,${t * t * (3 - 2 * t)})`);
-  }
-  return g;
+/** Erase strength at distance `d` from a stroke's centre line. Mirrors
+ *  erase.rs's `coverage` exactly — the two must change together, or the live
+ *  cut here and what Rust actually exports will disagree. Overlapping
+ *  destination-out dabs used to compound (each multiplying alpha by (1 − a)),
+ *  which over-erased a soft edge while dragging and then sprang back on
+ *  release; this profile is instead the per-stroke maximum, same as Rust. */
+function coverage(d, radius, softness) {
+  const inner = Math.max(0, Math.min(radius * (1 - softness), radius - 1));
+  if (d <= inner) return 1;
+  if (d >= radius) return 0;
+  const t = (radius - d) / (radius - inner);
+  return t * t * (3 - 2 * t);
 }
 
-/** Cut one brush dab out of the canvas at source pixel (x, y). */
-function dab(x, y) {
+/** Mirrors erase.rs's `distance_to_segment`. */
+function distanceToSegment(p, a, b) {
+  const dx = b[0] - a[0], dy = b[1] - a[1];
+  const len2 = dx * dx + dy * dy;
+  const t = len2 > 0
+    ? Math.max(0, Math.min(1, ((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / len2))
+    : 0;
+  const cx = a[0] + t * dx - p[0], cy = a[1] + t * dy - p[1];
+  return Math.hypot(cx, cy);
+}
+
+/** Cut one segment (in canvas pixels) into the canvas, against `strokeBase` —
+ *  the snapshot taken when this stroke began — rather than the canvas's
+ *  current pixels. Keeping a fixed base and taking the max of `strokeCov`
+ *  against each pixel's prior coverage is what makes a self-crossing stroke
+ *  behave like erase.rs's keep_mask: the strongest segment wins, once, instead
+ *  of every pass cutting a little more out of what the last pass already cut. */
+function cutSegment(a, b) {
+  const w = strokeBase.width, h = strokeBase.height;
   const s = el.ink.width / source.width;   // the canvas may hold the proxy
   const r = stroke.radius * s;
-  const ctx = el.ink.getContext("2d");
-  ctx.save();
-  ctx.globalCompositeOperation = "destination-out";
-  ctx.fillStyle = brushGradient(ctx, x * s, y * s, r, stroke.softness);
-  ctx.beginPath();
-  ctx.arc(x * s, y * s, r, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.restore();
+  const x0 = Math.max(0, Math.floor(Math.min(a[0], b[0]) - r));
+  const y0 = Math.max(0, Math.floor(Math.min(a[1], b[1]) - r));
+  const x1 = Math.min(w, Math.ceil(Math.max(a[0], b[0]) + r));
+  const y1 = Math.min(h, Math.ceil(Math.max(a[1], b[1]) + r));
+  if (x0 >= x1 || y0 >= y1) return;
+  const bw = x1 - x0;
+  // A pixel's coverage is measured from its centre, matching keep_mask's
+  // (x + 0.5, y + 0.5) — otherwise this preview's edge sits half a pixel off
+  // from what Rust rasterises.
+  const patch = new ImageData(bw, y1 - y0);
+  for (let y = y0; y < y1; y++) {
+    for (let x = x0; x < x1; x++) {
+      const d = distanceToSegment([x + 0.5, y + 0.5], a, b);
+      const c = coverage(d, r, stroke.softness);
+      const i = y * w + x;
+      if (c > strokeCov[i]) strokeCov[i] = c;
+      const si = i * 4, pi = ((y - y0) * bw + (x - x0)) * 4;
+      patch.data[pi] = strokeBase.data[si];
+      patch.data[pi + 1] = strokeBase.data[si + 1];
+      patch.data[pi + 2] = strokeBase.data[si + 2];
+      patch.data[pi + 3] = strokeBase.data[si + 3] * (1 - strokeCov[i]);
+    }
+  }
+  el.ink.getContext("2d").putImageData(patch, x0, y0);
 }
 
-function dabSegment(a, b) {
-  const s = el.ink.width / source.width;
-  const len = Math.hypot(b[0] - a[0], b[1] - a[1]) * s;
-  const n = Math.max(1, Math.ceil(len / Math.max(0.5, stroke.radius * s / 4)));
-  for (let i = 1; i <= n; i++) dab(a[0] + (b[0] - a[0]) * i / n, a[1] + (b[1] - a[1]) * i / n);
-}
-
+/** (Re)snapshot the canvas and cut every segment of the current stroke into
+ *  it. Used both to start a stroke and to replay one whenever the canvas is
+ *  repainted underneath a drag — a proxy ↔ full swap mid-stroke leaves
+ *  `strokeBase` pointing at pixels that no longer exist, so the cut has to
+ *  start over against the fresh ones. */
 function redrawStroke() {
-  const p = stroke.points;
-  dab(p[0][0], p[0][1]);
-  for (let i = 1; i < p.length; i++) dabSegment(p[i - 1], p[i]);
+  const ctx = el.ink.getContext("2d");
+  strokeBase = ctx.getImageData(0, 0, el.ink.width, el.ink.height);
+  strokeCov = new Float32Array(el.ink.width * el.ink.height);
+  const s = el.ink.width / source.width;
+  const pts = stroke.points.map((p) => [p[0] * s, p[1] * s]);
+  cutSegment(pts[0], pts[0]);
+  for (let i = 1; i < pts.length; i++) cutSegment(pts[i - 1], pts[i]);
 }
 
 /** Pointer → source-image pixels, whatever size the canvas is shown at. */
@@ -336,11 +383,32 @@ function syncEraser() {
   el.clear.disabled = strokeCount === 0;
 }
 
-function setErasing(on) { erasing = on && loaded; syncEraser(); }
+/** Drop the stroke being dragged without sending it to Rust. Rather than try
+ *  to undo the pixels cutSegment() already wrote, this just asks for a fresh
+ *  render: Rust never heard about the stroke, so the next paint is the canvas
+ *  as if it had never been drawn. */
+function discardStroke() {
+  if (!stroke) return;
+  stroke = null;
+  strokeBase = null;
+  strokeCov = null;
+  schedulePreview();
+}
+
+function setErasing(on) {
+  const next = on && loaded;
+  // Turning the eraser off mid-drag — via E, Escape, or the button itself —
+  // must not silently commit whatever partial stroke was being cut.
+  if (!next) discardStroke();
+  erasing = next;
+  syncEraser();
+}
 
 async function finishStroke() {
   const s = stroke;
   stroke = null;
+  strokeBase = null;   // Rust owns this stroke now; the local cut is stale
+  strokeCov = null;
   try {
     strokeCount = await invoke("erase_stroke", { stroke: s });
   } catch (e) {
@@ -389,11 +457,12 @@ el.clear.addEventListener("click", clearStrokes);
 const peek = (on) => loaded && el.ground.classList.toggle("peek", on);
 el.ground.addEventListener("pointerdown", (e) => {
   if (!erasing) { peek(true); return; }
-  if (e.button !== 0 || !source) return;
+  // Before the first render there is no painted canvas to snapshot and cut.
+  if (e.button !== 0 || !source || el.ink.hidden) return;
   el.ground.setPointerCapture(e.pointerId);
   stroke = { points: [toSource(e)], radius: Number(el.eSize.value) / 2,
              softness: Number(el.eSoft.value) / 100 };
-  dab(stroke.points[0][0], stroke.points[0][1]);
+  redrawStroke();
 });
 el.ground.addEventListener("pointermove", (e) => {
   moveBrush(e);
@@ -404,18 +473,24 @@ el.ground.addEventListener("pointermove", (e) => {
   // lose nothing in accuracy and save a great deal of rasterising.
   if (Math.hypot(p[0] - last[0], p[1] - last[1]) < Math.max(1, stroke.radius / 4)) return;
   stroke.points.push(p);
-  dabSegment(last, p);
+  const s = el.ink.width / source.width;   // the canvas may hold the proxy
+  cutSegment([last[0] * s, last[1] * s], [p[0] * s, p[1] * s]);
 });
-["pointerup", "pointercancel"].forEach((ev) => el.ground.addEventListener(ev, () => {
+el.ground.addEventListener("pointerup", () => {
   if (stroke) finishStroke();
   peek(false);
-}));
+});
+el.ground.addEventListener("pointercancel", () => {
+  // The OS interrupting a drag must not commit a stroke that was never finished.
+  discardStroke();
+  peek(false);
+});
 el.ground.addEventListener("pointerleave", () => { el.brush.hidden = true; peek(false); });
 document.addEventListener("keydown", (e) => {
   if (e.code === "Space" && !e.repeat && e.target === document.body) { e.preventDefault(); peek(true); }
   if (e.key === "Enter" && loaded && !e.ctrlKey) el.copy.click();
   if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === "z") { e.preventDefault(); undoStroke(); }
-  if (!e.ctrlKey && !e.metaKey && !e.altKey && e.key.toLowerCase() === "e" && loaded) setErasing(!erasing);
+  if (!e.ctrlKey && !e.metaKey && !e.altKey && !e.repeat && e.key.toLowerCase() === "e" && loaded) setErasing(!erasing);
   if (e.key === "Escape" && erasing) setErasing(false);
 });
 document.addEventListener("keyup", (e) => { if (e.code === "Space") peek(false); });
