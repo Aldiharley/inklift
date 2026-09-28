@@ -79,19 +79,29 @@ jobs:
           args: ${{ matrix.args }}
 
       # Collect with find rather than an upload glob. The glob missed on both
-      # macOS and Windows -- a universal build lands under
+      # macOS and Windows -- a universal Apple build lands under
       # target/universal-apple-darwin/, not target/ -- and the job still went
       # green because nothing had been uploaded and nothing said so.
+      #
+      # The listing runs first and unconditionally: when this found nothing on
+      # macOS and Windows there was no way to tell from the log whether the
+      # bundles were missing or the search was wrong.
       - name: Collect the bundles
         if: "!startsWith(github.ref, 'refs/tags/')"
         shell: bash
         run: |
+          echo "--- bundle directories under target/ ---"
+          find target -type d -name bundle 2>/dev/null || true
+          echo "--- installer files found ---"
+          find target -type f \
+            \( -name '*.deb' -o -name '*.AppImage' -o -name '*.dmg' \
+               -o -name '*.msi' -o -name '*.exe' \) 2>/dev/null || true
           mkdir -p dist
-          find target -path '*/bundle/*' \
+          find target -type f \
             \( -name '*.deb' -o -name '*.AppImage' -o -name '*.dmg' \
                -o -name '*.msi' -o -name '*.exe' \) \
-            -exec cp {} dist/ \;
-          echo "collected:"
+            -exec cp {} dist/ \; 2>/dev/null || true
+          echo "--- collected ---"
           ls -lh dist
 
       - name: Upload the bundles
