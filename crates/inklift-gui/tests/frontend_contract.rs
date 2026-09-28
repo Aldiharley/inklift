@@ -338,3 +338,81 @@ fn the_ui_can_tell_whether_screen_capture_is_available() {
          stays enabled on platforms where it can only fail"
     );
 }
+
+/// The "Thickest stroke" slider must be able to fix hollow thick strokes, which
+/// its own hint promises. It once moved only the paper radius while the UI sent
+/// a fixed Sauvola window of 12, and measured on a 2K photo of 40 px
+/// calligraphy, the paper radius changed nothing; only a wider window cleared
+/// the pinholes. The UI could not reach the fix at all.
+#[test]
+fn the_ui_does_not_pin_the_sauvola_window() {
+    let mut pinned = Vec::new();
+    for (file, body) in scripts() {
+        let mut rest = body.as_str();
+        while let Some(i) = rest.find("window:") {
+            rest = &rest[i + 7..];
+            if rest.trim_start().starts_with(|c: char| c.is_ascii_digit()) {
+                pinned.push(file.clone());
+            }
+        }
+    }
+    assert!(
+        pinned.is_empty(),
+        "these scripts send a fixed Sauvola window, so no control can widen it \
+         and thick strokes stay hollow: {pinned:?}"
+    );
+    let main_rs = fs::read_to_string(gui_dir().join("src/main.rs")).expect("main.rs");
+    assert!(
+        main_rs.contains("for_thick_strokes("),
+        "the backend must turn the thickest-stroke value into options through \
+         inklift_core's Options::for_thick_strokes, which widens the window with \
+         the paper radius; setting the radius alone does not fix hollow strokes"
+    );
+}
+
+/// Every field `render`, `save` and `copy` require must be sent by the UI.
+/// serde rejects a params object with a required field missing, so a field
+/// renamed or dropped on one side only breaks every render, not just one.
+#[test]
+fn every_required_extraction_param_is_sent_by_the_ui() {
+    let main_rs = fs::read_to_string(gui_dir().join("src/main.rs")).expect("main.rs");
+    let fields = main_rs
+        .split("struct Params {")
+        .nth(1)
+        .and_then(|s| s.split('}').next())
+        .expect("main.rs must define the Params the UI sends");
+    let app = fs::read_to_string(gui_dir().join("ui/app.js")).expect("app.js");
+    let sent = app
+        .split("function params()")
+        .nth(1)
+        .and_then(|s| s.split("\n}").next())
+        .expect("app.js must build its params in params()");
+
+    let mut missing = Vec::new();
+    for line in fields.lines().map(str::trim) {
+        if line.starts_with("//") || !line.contains(':') {
+            continue;
+        }
+        let (name, ty) = line.split_once(':').unwrap();
+        if ty.trim().starts_with("Option<") {
+            continue; // serde fills an absent Option with None
+        }
+        // #[serde(rename_all = "camelCase")]
+        let mut camel = String::new();
+        let mut upper = false;
+        for c in name.trim().chars() {
+            if c == '_' {
+                upper = true;
+            } else if upper {
+                camel.push(c.to_ascii_uppercase());
+                upper = false;
+            } else {
+                camel.push(c);
+            }
+        }
+        if !sent.contains(&format!("{camel}:")) {
+            missing.push(camel);
+        }
+    }
+    assert!(missing.is_empty(), "Params requires fields the UI never sends: {missing:?}");
+}

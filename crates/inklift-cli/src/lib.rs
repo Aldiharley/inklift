@@ -116,6 +116,8 @@ OPTIONS:
         --both            Write both exports, suffixed .ink.png and .white.png
         --k <FLOAT>       Sauvola k; raise it to keep less faint ink  [default: 0.20]
         --window <PX>     Sauvola window radius                       [default: 12]
+                          Raise to the stroke half-width if thick strokes
+                          come out hollow
         --min-area <PX>   Discard connected components below this     [default: 8]
         --radius <PX>     Paper-estimate radius; must exceed the stroke half-width
         --feather <PX>    How far soft edges reach past the stroke    [default: 1]

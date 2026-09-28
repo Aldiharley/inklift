@@ -12,7 +12,9 @@ pub struct Options {
     /// Closing radius for the paper estimate. `None` derives it from the image
     /// size. Must exceed the half-width of the thickest stroke.
     pub background_radius: Option<usize>,
-    /// Sauvola window radius. A few times the stroke width.
+    /// Sauvola window radius. A few times the stroke width, and never less than
+    /// its half-width, or the middle of the stroke comes out transparent. See
+    /// [`Options::for_thick_strokes`].
     pub sauvola_radius: usize,
     /// Sauvola `k`. Higher is more conservative and drops faint ink.
     pub sauvola_k: f32,
@@ -50,6 +52,26 @@ impl Options {
         self.background_radius = self.background_radius.map(len);
         self.min_area = ((self.min_area as f32 * s * s).round() as usize).max(1);
         // sauvola_k, invert and core_radius describe the image, not its size.
+        self
+    }
+
+    /// Settings for strokes up to `half_width` pixels from centre line to edge.
+    ///
+    /// Two stages have to see past a thick stroke, and failing either leaves it
+    /// hollow: the paper estimate, whose closing must bridge the stroke, and the
+    /// Sauvola window, which must reach paper from the stroke's middle or finds
+    /// no contrast there and calls it paper. Both need the half-width, so one
+    /// number sets both.
+    ///
+    /// It was the window that failed in practice. On a 2K photo of 40 px
+    /// calligraphy, a paper radius of 40 changed nothing and a window of 30
+    /// cleared every pinhole; synthetic 40, 60 and 80 px strokes come out solid
+    /// at exactly 20, 30 and 40 (`tests/thick_strokes.rs`). The window only ever
+    /// widens here: too narrow is holes, whereas too wide only picks up more
+    /// dark clutter around the page.
+    pub fn for_thick_strokes(mut self, half_width: usize) -> Self {
+        self.background_radius = Some(half_width);
+        self.sauvola_radius = self.sauvola_radius.max(half_width);
         self
     }
 }

@@ -37,8 +37,8 @@ struct Params {
     k: f32,
     min_area: usize,
     feather: usize,
-    radius: Option<usize>,
-    window: usize,
+    /// Half-width of the thickest stroke; `None` leaves both radii automatic.
+    stroke: Option<usize>,
     invert: bool,
     /// `None` keeps the pen that was actually found.
     ink: Option<String>,
@@ -46,14 +46,18 @@ struct Params {
 
 impl Params {
     fn options(&self) -> Options {
-        Options {
+        let options = Options {
             sauvola_k: self.k,
             min_area: self.min_area,
             feather: self.feather,
-            background_radius: self.radius,
-            sauvola_radius: self.window,
             invert: self.invert,
             ..Default::default()
+        };
+        // Through the core, not two fields set here: the slider once set only
+        // the paper radius, which measurably does nothing for hollow strokes.
+        match self.stroke {
+            Some(half_width) => options.for_thick_strokes(half_width),
+            None => options,
         }
     }
 }

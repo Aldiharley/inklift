@@ -59,8 +59,10 @@ function params() {
     k: (46 - Number(el.k.value)) / 100,
     minArea: Number(el.m.value),
     feather: 1,
-    radius: Number(el.r.value) > 0 ? Number(el.r.value) : null,
-    window: 12,
+    // The thickest stroke's half-width, or null for automatic. The backend
+    // widens the Sauvola window with it: the window, not the paper radius, is
+    // what leaves thick strokes hollow, so it must not be fixed here.
+    stroke: Number(el.r.value) > 0 ? Number(el.r.value) : null,
     invert: el.inv.checked,
     ink: inkChoice || null,
   };
