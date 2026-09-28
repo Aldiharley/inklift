@@ -3,7 +3,7 @@
 
 Two notes on choices made here, both settled by looking rather than guessing.
 
-**Source.** `design/logo/tray-16.svg` is a pixel grid drawn for 16px. Rendered
+**Source.** A pixel grid drawn for 16px (once `design/logo/tray-16.svg`) was tried. Rendered
 and compared against the smooth mark at a real panel size of 24px, the pixel
 version was muddy and ambiguous while the smooth mark stayed legible, so the
 mark wins. The full mark is used rather than the bare glyph because its baseline

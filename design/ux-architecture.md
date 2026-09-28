@@ -2,7 +2,7 @@
 
 Source: UX architecture pass, 2026-09-27. Grounded in the shipped CLI behaviour
 (README, `docs/screenshot-feature.md`, the invert detector) and in the Greenshot
-tray menu supplied as a structural reference (`design/ref/reference.jpg`).
+tray menu, used as a structural reference.
 
 ## 1. Product framing
 
