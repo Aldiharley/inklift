@@ -50,6 +50,8 @@ let strokeCount = 0;    // how many strokes Rust holds, as it last said
 let stroke = null;      // the stroke being dragged, in source pixels
 let strokeBase = null;  // canvas pixels as they were when the stroke began (ImageData)
 let strokeCov = null;   // Float32Array: this stroke's per-pixel max coverage so far
+let loadGen = 0;         // bumped on every adopt(); a render for an earlier
+                          // generation must not land on the image that replaced it
 
 /* ── helpers ───────────────────────────────────────────────────────────── */
 
@@ -123,8 +125,14 @@ async function render(full) {
   if (!loaded) return;
   if (inFlight) { queued = true; return; }
   inFlight = true;
+  const gen = loadGen;   // captured before the round trip, so an adopt() that
+                          // lands while this is in flight can be detected below
   try {
     const r = await invoke("render", { params: params(), full: !!full });
+    // adopt() ran while this was in flight: it is for an image nobody is
+    // looking at any more. Drop it rather than paint it or turn the eraser
+    // back on for pixels that do not belong to the current image.
+    if (gen !== loadGen) return;
     await paint(r.png);
     el.src.src = r.sourcePng;
     el.ink.hidden = false; el.src.hidden = false;
@@ -182,16 +190,16 @@ function schedulePreview() {
 
 function adopt(info) {
   loaded = true;
+  loadGen++;   // any render still in flight for the old image is now stale
   source = { width: info.width, height: info.height };
   strokeCount = 0;   // Rust dropped the old image's strokes with it
-  stroke = null;
-  strokeBase = null;  // any in-progress cut was against the old image's pixels
-  strokeCov = null;
   // Disabled again until the first paint of the new image: the canvas still
   // shows the old one (or is empty, on the very first load) until then, and
   // there is nothing correct for the eraser to cut yet.
   el.eraser.disabled = true; el.eSize.disabled = true; el.eSoft.disabled = true;
-  syncEraser();
+  // Also discards any stroke still being dragged against the old image — its
+  // points and its cut canvas are both in the wrong image's terms now.
+  setErasing(false);
   el.label.textContent = info.label + (info.region ? `  ${info.region}` : "");
   // Advisory only. The extracted pen is a fact about the source, so the flip is
   // offered rather than applied behind the user's back.
@@ -383,12 +391,13 @@ function syncEraser() {
   el.clear.disabled = strokeCount === 0;
 }
 
-/** Drop the stroke being dragged without sending it to Rust. Rather than try
- *  to undo the pixels cutSegment() already wrote, this just asks for a fresh
- *  render: Rust never heard about the stroke, so the next paint is the canvas
- *  as if it had never been drawn. */
+/** Drop the stroke being dragged without sending it to Rust. Rust never heard
+ *  about it, so putting the pre-stroke snapshot straight back is exactly
+ *  correct, and immediate — rather than leaving the cut pixels on screen
+ *  until the debounced schedulePreview() below gets around to a real render. */
 function discardStroke() {
   if (!stroke) return;
+  if (strokeBase) el.ink.getContext("2d").putImageData(strokeBase, 0, 0);
   stroke = null;
   strokeBase = null;
   strokeCov = null;
@@ -449,16 +458,23 @@ el.eraser.addEventListener("click", (e) => {
 });
 el.eSize.addEventListener("input", () => { el.eSizeVal.textContent = el.eSize.value + " px"; });
 el.eSoft.addEventListener("input", () => { el.eSoftVal.textContent = el.eSoft.value + " %"; });
-el.undo.addEventListener("click", undoStroke);
-el.clear.addEventListener("click", clearStrokes);
+// Blurred the same way as the eraser button: left focused, a later Enter
+// (global copy shortcut, which also activates a focused button) or Space
+// (keyup activates it, since target != body means it did not peek instead)
+// would undo or clear a second time with no redo to recover it.
+el.undo.addEventListener("click", (e) => { undoStroke(); if (e.detail > 0) el.undo.blur(); });
+el.clear.addEventListener("click", (e) => { clearStrokes(); if (e.detail > 0) el.clear.blur(); });
 
 /* ── peek: hold to compare, which is how you actually verify an alpha ──── */
 // While erasing, the pointer is busy painting, so comparing moves to Space.
 const peek = (on) => loaded && el.ground.classList.toggle("peek", on);
 el.ground.addEventListener("pointerdown", (e) => {
   if (!erasing) { peek(true); return; }
-  // Before the first render there is no painted canvas to snapshot and cut.
-  if (e.button !== 0 || !source || el.ink.hidden) return;
+  // Before the first render of the current image there is no painted canvas
+  // to snapshot and cut — el.eraser.disabled covers the gap right after
+  // adopt(), before that first render lands, that el.ink.hidden alone does
+  // not (the old image's canvas is neither hidden nor the right size).
+  if (e.button !== 0 || !source || el.ink.hidden || el.eraser.disabled) return;
   el.ground.setPointerCapture(e.pointerId);
   stroke = { points: [toSource(e)], radius: Number(el.eSize.value) / 2,
              softness: Number(el.eSoft.value) / 100 };
@@ -476,8 +492,19 @@ el.ground.addEventListener("pointermove", (e) => {
   const s = el.ink.width / source.width;   // the canvas may hold the proxy
   cutSegment([last[0] * s, last[1] * s], [p[0] * s, p[1] * s]);
 });
-el.ground.addEventListener("pointerup", () => {
-  if (stroke) finishStroke();
+el.ground.addEventListener("pointerup", (e) => {
+  if (stroke) {
+    // The thinning in pointermove can leave the stroke up to radius/4 short
+    // of where the pointer actually let go; close that gap before committing.
+    const p = toSource(e);
+    const last = stroke.points[stroke.points.length - 1];
+    if (p[0] !== last[0] || p[1] !== last[1]) {
+      stroke.points.push(p);
+      const s = el.ink.width / source.width;   // the canvas may hold the proxy
+      cutSegment([last[0] * s, last[1] * s], [p[0] * s, p[1] * s]);
+    }
+    finishStroke();
+  }
   peek(false);
 });
 el.ground.addEventListener("pointercancel", () => {
@@ -488,9 +515,11 @@ el.ground.addEventListener("pointercancel", () => {
 el.ground.addEventListener("pointerleave", () => { el.brush.hidden = true; peek(false); });
 document.addEventListener("keydown", (e) => {
   if (e.code === "Space" && !e.repeat && e.target === document.body) { e.preventDefault(); peek(true); }
-  if (e.key === "Enter" && loaded && !e.ctrlKey) el.copy.click();
+  // A focused button (Undo, Clear, the eraser toggle, …) already activates
+  // itself on Enter; running the global copy shortcut too would double it up.
+  if (e.key === "Enter" && loaded && !e.ctrlKey && e.target.tagName !== "BUTTON") el.copy.click();
   if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === "z") { e.preventDefault(); undoStroke(); }
-  if (!e.ctrlKey && !e.metaKey && !e.altKey && !e.repeat && e.key.toLowerCase() === "e" && loaded) setErasing(!erasing);
+  if (!e.ctrlKey && !e.metaKey && !e.altKey && !e.repeat && e.key.toLowerCase() === "e" && loaded && !el.eraser.disabled) setErasing(!erasing);
   if (e.key === "Escape" && erasing) setErasing(false);
 });
 document.addEventListener("keyup", (e) => { if (e.code === "Space") peek(false); });
