@@ -168,6 +168,16 @@ $("openBtn").addEventListener("click", async () => {
   } catch (e) { toast(String(e), true); }
 });
 
+// Grey the button out where the backend has no capture backend, so it does
+// not invite a click that can only fail. The tray item is disabled the same way.
+invoke("capture_supported").then((ok) => {
+  if (ok) return;
+  const b = $("grabBtn");
+  b.disabled = true;
+  b.title = "Lifting from the screen needs X11; this build has no capture " +
+            "backend for your platform yet. Open a file instead.";
+}).catch(() => {});
+
 $("grabBtn").addEventListener("click", async () => {
   try {
     // The screen is grabbed before the overlay appears, so the overlay can

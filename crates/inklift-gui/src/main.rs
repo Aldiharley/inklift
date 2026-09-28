@@ -205,6 +205,16 @@ fn screens() -> Result<Vec<String>, String> {
         .collect())
 }
 
+/// Whether this build can grab the screen at all.
+///
+/// The window asks once at startup so it can grey the button out. The tray
+/// item is already disabled the same way; leaving the button enabled offered
+/// an action whose only possible outcome was an error message.
+#[tauri::command]
+fn capture_supported() -> bool {
+    cfg!(target_os = "linux")
+}
+
 /// A selection smaller than this on either axis is a misclick, not a capture.
 /// Only the X11 pick path consults it.
 #[cfg(target_os = "linux")]
@@ -600,7 +610,7 @@ fn main() {
         .manage(App::default())
         .invoke_handler(tauri::generate_handler![
             open_file, capture, screens, render, save, copy,
-            begin_pick, pick_open, pick_save, ui_ready
+            begin_pick, pick_open, pick_save, capture_supported, ui_ready
         ])
         .setup(|app| {
             if let Some(w) = app.get_webview_window("main") {

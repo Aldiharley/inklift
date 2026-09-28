@@ -292,3 +292,34 @@ fn no_ui_catch_block_only_writes_to_the_console() {
         "these failures reach only the webview console, which nobody sees: {swallowed:#?}"
     );
 }
+
+/// A control that can only fail on this platform must not look available.
+///
+/// The tray's "Lift from screen…" is greyed out where there is no capture
+/// backend, but the window's button was not, so on Windows it invited a click
+/// whose only possible outcome was an error message. Offering an action that
+/// cannot work is a worse failure than not offering it.
+#[test]
+fn the_ui_can_tell_whether_screen_capture_is_available() {
+    let src = fs::read_to_string(gui_dir().join("src/main.rs")).expect("main.rs");
+    if !src.contains("NO_CAPTURE") {
+        return; // every platform can capture; nothing to disable
+    }
+    assert!(
+        src.contains("fn capture_supported"),
+        "the backend refuses capture on some platforms but exposes no way for \
+         the window to ask, so the button cannot be disabled"
+    );
+    let ui: String = fs::read_dir(gui_dir().join("ui"))
+        .expect("ui/")
+        .filter_map(Result::ok)
+        .map(|e| e.path())
+        .filter(|p| p.extension().is_some_and(|x| x == "js"))
+        .filter_map(|p| fs::read_to_string(p).ok())
+        .collect();
+    assert!(
+        ui.contains("capture_supported"),
+        "nothing in the UI asks whether capture is supported, so the button \
+         stays enabled on platforms where it can only fail"
+    );
+}

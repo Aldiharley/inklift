@@ -1,3 +1,7 @@
+//! X11 only: this drives the selector with XTEST, which has no meaning on
+//! another windowing system. A platform port owns the equivalent for its own.
+#![cfg(target_os = "linux")]
+
 //! Drive a real drag against the live selector.
 //!
 //! The previous selection UI passed every file-reading test in the repository
