@@ -1,6 +1,6 @@
 # Action icons — design
 
-Date: 2026-09-29. Status: approved in brainstorming, not yet built.
+Date: 2026-09-29. Status: built on branch `icons`.
 
 ## Problem
 

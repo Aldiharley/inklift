@@ -25,7 +25,9 @@ fn ui() -> PathBuf {
 fn every_action_icon_is_a_square_transparent_png() {
     for (_, file) in ICONS {
         let path = ui().join("icons").join(file);
-        let img = image::open(&path).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
+        // image::open picks its decoder from the filename; the workspace guard
+        // (crates/inklift-cli/tests/io.rs) requires open_image instead.
+        let img = inklift_cli::open_image(&path).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
         assert!(img.color().has_alpha(), "{file} has no alpha channel");
         let rgba = img.to_rgba8();
         let (w, h) = rgba.dimensions();
@@ -64,6 +66,13 @@ fn every_action_button_carries_its_icon_decoratively() {
         assert_eq!(b.matches("<img").count(), 1, "#{id} should hold exactly one icon: {b}");
         assert!(b.contains(&format!("src=\"icons/{file}\"")), "#{id} should show icons/{file}: {b}");
         assert!(b.contains("class=\"ico\""), "#{id}'s icon needs class=\"ico\" for its size: {b}");
+        // The icon must be the button's first child so it sits before the
+        // label rather than after it or buried in some wrapper.
+        let after_open_tag = b.find('>').unwrap_or_else(|| panic!("#{id}'s <button> tag is never closed: {b}"));
+        assert!(
+            b[after_open_tag + 1..].starts_with("<img class=\"ico\""),
+            "#{id}'s icon must be the button's first child: {b}"
+        );
         // The visible label is the accessible name; an alt text would make a
         // screen reader say "Eraser, Eraser".
         assert!(

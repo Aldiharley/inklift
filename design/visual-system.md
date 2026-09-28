@@ -545,13 +545,17 @@ noise at 18 px — both were generated and compared at real size in both themes.
   `crates/inklift-gui/ui/icons/`.
 - **Decorative:** `alt=""` and `aria-hidden="true"`; the visible label is the
   accessible name.
-- **Disabled:** the icon dims further than the label (§3 rule 5):
+- **Disabled:** the icon dims further than the label (§3.5 rule 5):
   `opacity:.6; filter:grayscale(.5)` on top of the button's 0.45.
-- **Regenerating:** one Higgsfield `gpt_image_2_5` generation (2K, high,
-  transparent, the clay reference image) with the prompt in
-  `tools/icons-prompt.txt`, then `python tools/make_icons.py sheet.png`. One
-  sheet, never seven generations: siblings drawn separately drift in lighting
-  and colour. The 2K sheet is not committed.
+- **Regenerating:** `higgsfield generate create gpt_image_2_5 --prompt
+  "$(cat tools/icons-prompt.txt)" --image-references <clay reference>
+  --quality high --resolution 2k --background transparent --aspect_ratio 3:2
+  --wait`, then `python tools/make_icons.py sheet.png`. One sheet, never
+  seven generations: siblings drawn separately drift in lighting and colour.
+  The 2K sheet is not committed. The clay style reference was a third-party
+  image the owner supplied, not project artwork, so it is deliberately not
+  committed either; a regeneration needs a comparable soft-clay reference
+  image in its place.
 
 ## Risk register
 
