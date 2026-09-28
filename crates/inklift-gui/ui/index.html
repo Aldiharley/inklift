@@ -70,6 +70,10 @@ html[data-theme="dark"] .seg button[aria-pressed="true"]{box-shadow:inset 0 1px 
 .btn.ghost:hover{background:color-mix(in oklab,var(--accent) 10%,transparent);color:var(--text)}
 .btn:disabled{opacity:.45;cursor:default;filter:none;transform:none}
 .btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px;box-shadow:0 0 0 4px rgba(0,0,0,.30)}
+/* action icons are decorative; the label stays the button's name. Disabled
+   dims the icon further than the label, as visual-system.md §3 rule 5 asks */
+.btn .ico{width:18px;height:18px;flex:none;pointer-events:none;-webkit-user-drag:none}
+.btn:disabled .ico{opacity:.6;filter:grayscale(.5)}
 .btn.tool[aria-pressed="true"]{background:color-mix(in oklab,var(--accent) 16%,transparent);color:var(--accent-text);
   box-shadow:inset 0 0 0 1px color-mix(in oklab,var(--accent) 45%,transparent)}
 
@@ -191,8 +195,8 @@ input[type=range]:disabled{opacity:.45;cursor:default}
     </svg>
     <span class="label" id="label">Nothing loaded</span>
     <span class="spacer"></span>
-    <button class="btn ghost" id="openBtn">Open a file…</button>
-    <button class="btn ghost" id="grabBtn">Lift from screen</button>
+    <button class="btn ghost" id="openBtn"><img class="ico" src="icons/open.png" alt="" aria-hidden="true">Open a file…</button>
+    <button class="btn ghost" id="grabBtn"><img class="ico" src="icons/lift.png" alt="" aria-hidden="true">Lift from screen</button>
     <div class="seg" id="groundSeg" role="group" aria-label="Preview background">
       <button aria-pressed="true"  data-v="void"><span class="gsw void"></span>Void</button>
       <button aria-pressed="false" data-v="white"><span class="gsw white"></span>White</button>
@@ -264,7 +268,7 @@ input[type=range]:disabled{opacity:.45;cursor:default}
       <div class="field">
         <div class="shead">Clean up</div>
         <button class="btn ghost tool" id="eraserBtn" aria-pressed="false" disabled
-                title="Erase leftover marks (E)">Eraser</button>
+                title="Erase leftover marks (E)"><img class="ico" src="icons/eraser.png" alt="" aria-hidden="true">Eraser</button>
       </div>
 
       <div class="field">
@@ -279,8 +283,8 @@ input[type=range]:disabled{opacity:.45;cursor:default}
       </div>
 
       <div style="display:flex;gap:8px">
-        <button class="btn ghost" id="undoBtn" disabled title="Undo the last stroke (Ctrl+Z)">Undo</button>
-        <button class="btn ghost" id="clearBtn" disabled>Clear erasing</button>
+        <button class="btn ghost" id="undoBtn" disabled title="Undo the last stroke (Ctrl+Z)"><img class="ico" src="icons/undo.png" alt="" aria-hidden="true">Undo</button>
+        <button class="btn ghost" id="clearBtn" disabled><img class="ico" src="icons/clear.png" alt="" aria-hidden="true">Clear erasing</button>
       </div>
 
       <div class="diag" id="diag"></div>
@@ -293,8 +297,8 @@ input[type=range]:disabled{opacity:.45;cursor:default}
       <button aria-pressed="false" data-v="white"><span class="gsw white"></span>On white</button>
     </div>
     <div style="display:flex;gap:8px">
-      <button class="btn ghost"  id="saveBtn" disabled>Save…</button>
-      <button class="btn primary" id="copyBtn" disabled>Copy</button>
+      <button class="btn ghost"  id="saveBtn" disabled><img class="ico" src="icons/save.png" alt="" aria-hidden="true">Save…</button>
+      <button class="btn primary" id="copyBtn" disabled><img class="ico" src="icons/copy.png" alt="" aria-hidden="true">Copy</button>
     </div>
   </div>
 </div>

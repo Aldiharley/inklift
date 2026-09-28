@@ -533,6 +533,26 @@ in one bit.
 **Shadows are context-aware:** heavier over the Stage or dense content, lighter
 over flat chrome. Separation should cost only what the background demands.
 
+## 10. Action icons
+
+The seven action buttons — Open, Lift from screen, Eraser, Undo, Clear
+erasing, Save, Copy — carry one icon family in a **soft clay 3D** style, tinted
+toward the pigment palette. Chosen over a flat bold outline, whose dark outline
+vanished on the dark theme at 18 px, and glossy 3D, whose highlights turned to
+noise at 18 px — both were generated and compared at real size in both themes.
+
+- **Size:** shown at 18 px, stored at 54 px (3×) in
+  `crates/inklift-gui/ui/icons/`.
+- **Decorative:** `alt=""` and `aria-hidden="true"`; the visible label is the
+  accessible name.
+- **Disabled:** the icon dims further than the label (§3 rule 5):
+  `opacity:.6; filter:grayscale(.5)` on top of the button's 0.45.
+- **Regenerating:** one Higgsfield `gpt_image_2_5` generation (2K, high,
+  transparent, the clay reference image) with the prompt in
+  `tools/icons-prompt.txt`, then `python tools/make_icons.py sheet.png`. One
+  sheet, never seven generations: siblings drawn separately drift in lighting
+  and colour. The 2K sheet is not committed.
+
 ## Risk register
 
 | Risk | Mitigation |
