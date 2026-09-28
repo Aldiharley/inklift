@@ -63,3 +63,31 @@ fn the_eraser_commands_are_registered() {
         assert!(handler.contains(cmd), "{cmd} is not registered");
     }
 }
+
+#[test]
+fn the_ui_calls_every_eraser_command() {
+    let app = read("ui/app.js");
+    for cmd in ["erase_stroke", "undo_erase", "clear_erase"] {
+        assert!(
+            app.contains(&format!("invoke(\"{cmd}\"")),
+            "{cmd} is registered but the UI never calls it"
+        );
+    }
+}
+
+#[test]
+fn every_eraser_control_exists_and_is_wired() {
+    let html = read("ui/index.html");
+    let app = read("ui/app.js");
+    for id in ["eraserBtn", "eSize", "eSoft", "undoBtn", "clearBtn", "brush"] {
+        assert!(html.contains(&format!("id=\"{id}\"")), "index.html has no #{id}");
+        assert!(
+            app.contains(&format!("$(\"{id}\")")),
+            "app.js never looks up #{id}, so the control does nothing"
+        );
+    }
+    assert!(
+        html.contains("<canvas id=\"ink\""),
+        "the result must be a canvas: an <img> cannot show a stroke while it is being dragged"
+    );
+}

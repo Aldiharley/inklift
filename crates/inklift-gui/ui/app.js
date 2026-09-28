@@ -35,12 +35,19 @@ const el = {
   save: $("saveBtn"), copy: $("copyBtn"), toast: $("toast"),
   k: $("k"), m: $("m"), r: $("r"), inv: $("inv"),
   kVal: $("kVal"), mVal: $("mVal"), rVal: $("rVal"),
+  eraser: $("eraserBtn"), eSize: $("eSize"), eSoft: $("eSoft"),
+  eSizeVal: $("eSizeVal"), eSoftVal: $("eSoftVal"),
+  undo: $("undoBtn"), clear: $("clearBtn"), brush: $("brush"),
 };
 
 let loaded = false;
 let output = "alpha";
 let inkChoice = "";
 let previewTimer = null, fullTimer = null, inFlight = false, queued = false;
+let source = null;      // the loaded image's size; strokes are in its pixels
+let erasing = false;
+let strokeCount = 0;    // how many strokes Rust holds, as it last said
+let stroke = null;      // the stroke being dragged, in source pixels
 
 /* ── helpers ───────────────────────────────────────────────────────────── */
 
@@ -116,7 +123,7 @@ async function render(full) {
   inFlight = true;
   try {
     const r = await invoke("render", { params: params(), full: !!full });
-    el.ink.src = r.png;
+    await paint(r.png);
     el.src.src = r.sourcePng;
     el.ink.hidden = false; el.src.hidden = false;
     el.empty.hidden = true; el.peekHint.hidden = false;
@@ -143,6 +150,24 @@ async function render(full) {
   }
 }
 
+/** Draw a rendered PNG into the result canvas. A canvas rather than an <img>
+ *  because a stroke has to show while it is being dragged, before Rust has it. */
+function paint(uri) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      el.ink.width = img.naturalWidth;
+      el.ink.height = img.naturalHeight;
+      el.ink.getContext("2d").drawImage(img, 0, 0);
+      // a render that lands mid-drag must not wipe the stroke off the screen
+      if (stroke) redrawStroke();
+      resolve();
+    };
+    img.onerror = () => reject(new Error("the rendered result could not be decoded"));
+    img.src = uri;
+  });
+}
+
 /** Debounced so a dragged slider does not queue a job per pixel. */
 function schedulePreview() {
   clearTimeout(previewTimer);
@@ -152,6 +177,11 @@ function schedulePreview() {
 
 function adopt(info) {
   loaded = true;
+  source = { width: info.width, height: info.height };
+  strokeCount = 0;   // Rust dropped the old image's strokes with it
+  stroke = null;
+  [el.eraser, el.eSize, el.eSoft].forEach((c) => { c.disabled = false; });
+  syncEraser();
   el.label.textContent = info.label + (info.region ? `  ${info.region}` : "");
   // Advisory only. The extracted pen is a fact about the source, so the flip is
   // offered rather than applied behind the user's back.
@@ -233,14 +263,160 @@ segment("groundSeg", (v) => el.ground.setAttribute("data-bg", v));
 segment("themeSeg", (v) => document.documentElement.setAttribute("data-theme", v));
 segment("outSeg", (v) => { output = v; });
 
+/* ── eraser ────────────────────────────────────────────────────────────── */
+//
+// The strokes live in Rust, in source pixels, and every render, save and copy
+// applies them. The canvas here is only feedback while the pointer is down: it
+// cuts the stroke out with the same fall-off as erase.rs, then the normal
+// preview → full refresh replaces it with what Rust will actually export.
+
+/** A radial gradient with erase.rs's profile: full strength to the inner
+ *  radius, then a smoothstep to nothing at r. */
+function brushGradient(ctx, x, y, r, soft) {
+  const inner = Math.max(0, Math.min(r * (1 - soft), r - 1));
+  const g = ctx.createRadialGradient(x, y, 0, x, y, r);
+  for (let i = 0; i <= 8; i++) {
+    const t = 1 - i / 8;
+    g.addColorStop((inner + (r - inner) * (i / 8)) / r, `rgba(0,0,0,${t * t * (3 - 2 * t)})`);
+  }
+  return g;
+}
+
+/** Cut one brush dab out of the canvas at source pixel (x, y). */
+function dab(x, y) {
+  const s = el.ink.width / source.width;   // the canvas may hold the proxy
+  const r = stroke.radius * s;
+  const ctx = el.ink.getContext("2d");
+  ctx.save();
+  ctx.globalCompositeOperation = "destination-out";
+  ctx.fillStyle = brushGradient(ctx, x * s, y * s, r, stroke.softness);
+  ctx.beginPath();
+  ctx.arc(x * s, y * s, r, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+}
+
+function dabSegment(a, b) {
+  const s = el.ink.width / source.width;
+  const len = Math.hypot(b[0] - a[0], b[1] - a[1]) * s;
+  const n = Math.max(1, Math.ceil(len / Math.max(0.5, stroke.radius * s / 4)));
+  for (let i = 1; i <= n; i++) dab(a[0] + (b[0] - a[0]) * i / n, a[1] + (b[1] - a[1]) * i / n);
+}
+
+function redrawStroke() {
+  const p = stroke.points;
+  dab(p[0][0], p[0][1]);
+  for (let i = 1; i < p.length; i++) dabSegment(p[i - 1], p[i]);
+}
+
+/** Pointer → source-image pixels, whatever size the canvas is shown at. */
+function toSource(e) {
+  const b = el.ink.getBoundingClientRect();
+  return [(e.clientX - b.left) / b.width * source.width,
+          (e.clientY - b.top) / b.height * source.height];
+}
+
+function moveBrush(e) {
+  if (!erasing || !source) { el.brush.hidden = true; return; }
+  const b = el.ink.getBoundingClientRect();
+  const g = el.ground.getBoundingClientRect();
+  const d = Number(el.eSize.value) * b.width / source.width;
+  el.brush.style.width = el.brush.style.height = d + "px";
+  el.brush.style.left = (e.clientX - g.left - d / 2) + "px";
+  el.brush.style.top = (e.clientY - g.top - d / 2) + "px";
+  el.brush.hidden = false;
+}
+
+function syncEraser() {
+  el.eraser.setAttribute("aria-pressed", String(erasing));
+  el.ground.classList.toggle("erasing", erasing);
+  if (!erasing) el.brush.hidden = true;
+  el.peekHint.textContent = erasing ? "drag to erase · hold Space to compare" : "hold to compare";
+  el.undo.disabled = strokeCount === 0;
+  el.clear.disabled = strokeCount === 0;
+}
+
+function setErasing(on) { erasing = on && loaded; syncEraser(); }
+
+async function finishStroke() {
+  const s = stroke;
+  stroke = null;
+  try {
+    strokeCount = await invoke("erase_stroke", { stroke: s });
+  } catch (e) {
+    toast(String(e), true);
+  }
+  syncEraser();
+  // Either way, redraw from Rust: on success the canvas converges on what will
+  // export; on failure it drops an erasure that never happened.
+  schedulePreview();
+}
+
+async function undoStroke() {
+  if (!loaded || strokeCount === 0) return;
+  try {
+    strokeCount = await invoke("undo_erase");
+    toast("Stroke undone");
+    schedulePreview();
+  } catch (e) { toast(String(e), true); }
+  syncEraser();
+}
+
+async function clearStrokes() {
+  if (!loaded || strokeCount === 0) return;
+  try {
+    await invoke("clear_erase");
+    strokeCount = 0;
+    toast("Erasing cleared");
+    schedulePreview();
+  } catch (e) { toast(String(e), true); }
+  syncEraser();
+}
+
+el.eraser.addEventListener("click", (e) => {
+  setErasing(!erasing);
+  // A mouse click leaves focus on the button, where Space would toggle it
+  // instead of peeking. Keyboard users keep their focus.
+  if (e.detail > 0) el.eraser.blur();
+});
+el.eSize.addEventListener("input", () => { el.eSizeVal.textContent = el.eSize.value + " px"; });
+el.eSoft.addEventListener("input", () => { el.eSoftVal.textContent = el.eSoft.value + " %"; });
+el.undo.addEventListener("click", undoStroke);
+el.clear.addEventListener("click", clearStrokes);
+
 /* ── peek: hold to compare, which is how you actually verify an alpha ──── */
+// While erasing, the pointer is busy painting, so comparing moves to Space.
 const peek = (on) => loaded && el.ground.classList.toggle("peek", on);
-el.ground.addEventListener("pointerdown", () => peek(true));
-["pointerup", "pointerleave", "pointercancel"].forEach((ev) =>
-  el.ground.addEventListener(ev, () => peek(false)));
+el.ground.addEventListener("pointerdown", (e) => {
+  if (!erasing) { peek(true); return; }
+  if (e.button !== 0 || !source) return;
+  el.ground.setPointerCapture(e.pointerId);
+  stroke = { points: [toSource(e)], radius: Number(el.eSize.value) / 2,
+             softness: Number(el.eSoft.value) / 100 };
+  dab(stroke.points[0][0], stroke.points[0][1]);
+});
+el.ground.addEventListener("pointermove", (e) => {
+  moveBrush(e);
+  if (!stroke) return;
+  const p = toSource(e);
+  const last = stroke.points[stroke.points.length - 1];
+  // Thin the path: Rust measures distance to each segment, so sparse points
+  // lose nothing in accuracy and save a great deal of rasterising.
+  if (Math.hypot(p[0] - last[0], p[1] - last[1]) < Math.max(1, stroke.radius / 4)) return;
+  stroke.points.push(p);
+  dabSegment(last, p);
+});
+["pointerup", "pointercancel"].forEach((ev) => el.ground.addEventListener(ev, () => {
+  if (stroke) finishStroke();
+  peek(false);
+}));
+el.ground.addEventListener("pointerleave", () => { el.brush.hidden = true; peek(false); });
 document.addEventListener("keydown", (e) => {
   if (e.code === "Space" && !e.repeat && e.target === document.body) { e.preventDefault(); peek(true); }
   if (e.key === "Enter" && loaded && !e.ctrlKey) el.copy.click();
+  if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === "z") { e.preventDefault(); undoStroke(); }
+  if (!e.ctrlKey && !e.metaKey && !e.altKey && e.key.toLowerCase() === "e" && loaded) setErasing(!erasing);
+  if (e.key === "Escape" && erasing) setErasing(false);
 });
 document.addEventListener("keyup", (e) => { if (e.code === "Space") peek(false); });
 

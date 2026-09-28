@@ -255,8 +255,10 @@ full resolution.
 It gives you sliders for pickup (Sauvola `k`), speck removal and thickest
 stroke; a light-on-dark toggle; ink swatches; four preview grounds — void,
 white, black and ink — for checking the alpha channel against something other
-than the colour you cut it from; hold-to-compare against the source; and
-Save / Copy.
+than the colour you cut it from; hold-to-compare against the source; an
+eraser with adjustable size and softness for the stray marks no slider should
+have to fix, which holds through retuning, Save and Copy (Ctrl+Z undoes a
+stroke); and Save / Copy.
 
 <p align="center">
   <img src="design/assets/readme-lift-from-screen-windows.jpg" width="880"

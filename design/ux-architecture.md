@@ -25,7 +25,8 @@ a second for a typical region.
 it an image, in the menu for the same reason "Open file" is. Not a scanner or
 document cleaner; "clean scan on white" is a commodity and CamScanner won it.
 Not OCR — nothing turns ink into text, and the value is that the strokes stay
-yours. Not an image editor, annotation tool, or a place to store things.
+yours. Not an image editor, annotation tool, or a place to store things — the one
+hand tool is an eraser for leftover marks, and it only ever removes ink.
 
 One sentence to hold: **background removal, but for handwriting, and the removal
 is the product.**

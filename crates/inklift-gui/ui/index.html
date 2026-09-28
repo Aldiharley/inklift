@@ -70,6 +70,8 @@ html[data-theme="dark"] .seg button[aria-pressed="true"]{box-shadow:inset 0 1px 
 .btn.ghost:hover{background:color-mix(in oklab,var(--accent) 10%,transparent);color:var(--text)}
 .btn:disabled{opacity:.45;cursor:default;filter:none;transform:none}
 .btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px;box-shadow:0 0 0 4px rgba(0,0,0,.30)}
+.btn.tool[aria-pressed="true"]{background:color-mix(in oklab,var(--accent) 16%,transparent);color:var(--accent-text);
+  box-shadow:inset 0 0 0 1px color-mix(in oklab,var(--accent) 45%,transparent)}
 
 /* ── body ───────────────────────────────────────────────────────────────── */
 .body{display:grid;grid-template-columns:1fr 296px;flex:1;min-height:0}
@@ -95,6 +97,10 @@ html[data-theme="dark"] .seg button[aria-pressed="true"]{box-shadow:inset 0 1px 
   filter:drop-shadow(0 1px 2px rgba(0,0,0,.5)) drop-shadow(0 6px 14px rgba(0,0,0,.35))}
 #src{position:absolute;opacity:0;transition:opacity 120ms}
 .ground.peek #ink{opacity:0} .ground.peek #src{opacity:1}
+/* eraser: the ring is the cursor, so the system one is hidden over the stage */
+.ground.erasing{cursor:none}
+.brush{position:absolute;border-radius:50%;pointer-events:none;
+  box-shadow:0 0 0 1px rgba(255,255,255,.9),inset 0 0 0 1px rgba(30,27,24,.75)}
 .hint{position:absolute;left:12px;bottom:9px;font-family:var(--mono);font-size:11px;
   color:var(--text-2);opacity:.55;pointer-events:none}
 .ground[data-bg="black"] .hint,.ground[data-bg="ink"] .hint{color:rgba(255,255,255,.6)}
@@ -129,6 +135,7 @@ input[type=range]::-webkit-slider-thumb{appearance:none;width:16px;height:16px;b
   background:var(--bg-content);box-shadow:0 0 0 .5px var(--rule-strong),0 1px 2.5px rgba(30,27,24,.22)}
 input[type=range]:active::-webkit-slider-thumb{transform:scale(.96)}
 input[type=range]:focus-visible{outline:2px solid var(--accent);outline-offset:4px;border-radius:8px}
+input[type=range]:disabled{opacity:.45;cursor:default}
 .check{display:flex;gap:9px;align-items:flex-start;cursor:pointer;font-size:13px}
 .check input{appearance:none;width:15px;height:15px;border-radius:4px;flex:none;margin-top:1px;cursor:pointer;
   background:var(--bg-well);box-shadow:inset 0 1px 2px rgba(30,27,24,.12),inset 0 0 0 1px var(--rule)}
@@ -211,10 +218,11 @@ input[type=range]:focus-visible{outline:2px solid var(--accent);outline-offset:4
           <p>Open an image, or drag a box on screen. The handwriting comes back with the paper gone —
              a real alpha channel you can drop onto anything.</p>
         </div>
-        <img id="ink" alt="Extracted handwriting" hidden>
+        <canvas id="ink" role="img" aria-label="Extracted handwriting" hidden></canvas>
         <img id="src" alt="The original image" hidden>
         <span class="hint" id="peekHint" hidden>hold to compare</span>
         <span class="chip" id="chip"></span>
+        <div class="brush" id="brush" hidden></div>
       </div>
       <div class="statusbar">
         <span class="readout" id="readout"></span>
@@ -252,6 +260,28 @@ input[type=range]:focus-visible{outline:2px solid var(--accent);outline-offset:4
       </div>
 
       <label class="check"><input type="checkbox" id="inv"><span>Light ink on a dark background</span></label>
+
+      <div class="field">
+        <div class="shead">Clean up</div>
+        <button class="btn ghost tool" id="eraserBtn" aria-pressed="false" disabled
+                title="Erase leftover marks (E)">Eraser</button>
+      </div>
+
+      <div class="field">
+        <div class="flabel"><span class="n">Eraser size</span><span class="val" id="eSizeVal">20 px</span></div>
+        <input type="range" id="eSize" min="2" max="200" value="20" aria-label="Eraser size" disabled>
+      </div>
+
+      <div class="field">
+        <div class="flabel"><span class="n">Softness</span><span class="val" id="eSoftVal">25 %</span></div>
+        <input type="range" id="eSoft" min="0" max="100" value="25" aria-label="Eraser softness" disabled>
+        <div class="ends"><span>Crisp edge</span><span>Feathered</span></div>
+      </div>
+
+      <div style="display:flex;gap:8px">
+        <button class="btn ghost" id="undoBtn" disabled title="Undo the last stroke (Ctrl+Z)">Undo</button>
+        <button class="btn ghost" id="clearBtn" disabled>Clear erasing</button>
+      </div>
 
       <div class="diag" id="diag"></div>
     </aside>
