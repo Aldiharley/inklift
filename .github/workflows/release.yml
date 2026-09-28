@@ -90,17 +90,22 @@ jobs:
         if: "!startsWith(github.ref, 'refs/tags/')"
         shell: bash
         run: |
-          echo "--- bundle directories under target/ ---"
-          find target -type d -name bundle 2>/dev/null || true
-          echo "--- installer files found ---"
-          find target -type f \
+          # Search the whole workspace, not target/. On macOS a universal build
+          # left nothing under target/ at all, and because the find errors were
+          # sent to /dev/null the log could not say why -- the one thing that
+          # would have explained it was the thing being silenced.
+          echo "pwd: $(pwd)"
+          echo "--- bundle directories ---"
+          find . -type d -name bundle || true
+          echo "--- installers anywhere in the workspace ---"
+          find . -type f \
             \( -name '*.deb' -o -name '*.AppImage' -o -name '*.dmg' \
-               -o -name '*.msi' -o -name '*.exe' \) 2>/dev/null || true
+               -o -name '*.msi' -o -name '*.exe' \) || true
           mkdir -p dist
-          find target -type f \
+          find . -type f -path '*/release/*' \
             \( -name '*.deb' -o -name '*.AppImage' -o -name '*.dmg' \
                -o -name '*.msi' -o -name '*.exe' \) \
-            -exec cp {} dist/ \; 2>/dev/null || true
+            -exec cp {} dist/ \;
           echo "--- collected ---"
           ls -lh dist
 
