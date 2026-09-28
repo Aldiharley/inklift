@@ -18,6 +18,13 @@ gone, the strokes keep their own colour and their soft edges, and the result is
 a transparent PNG you can drop onto a slide, a dark-themed note, a coloured
 page or a photograph and have it look like it was written there.
 
+<p align="center">
+  <img src="design/assets/readme-before-after.jpg" width="880"
+       alt="Left: a photo of the word Inklift in navy copperplate calligraphy on warm, textured paper. Right: the same lettering lifted off onto a transparent background, the paper, light fall-off and grain gone and the soft stroke edges kept.">
+</p>
+<p align="center"><sub>A photo of calligraphy, and what <code>inklift photo.png --window 30</code>
+lifted off it. The lettering is an AI-generated sample made for this demo.</sub></p>
+
 It runs entirely on your machine. A stock build links no HTTP client at all.
 
 ```console
@@ -253,6 +260,13 @@ stroke; a light-on-dark toggle; ink swatches; four preview grounds — void,
 white, black and ink — for checking the alpha channel against something other
 than the colour you cut it from; hold-to-compare against the source; and
 Save / Copy.
+
+<p align="center">
+  <img src="design/assets/readme-lift-from-screen-windows.jpg" width="880"
+       alt="The inklift desktop app on Windows, beside a photo viewer showing calligraphy on paper. The app shows the region it lifted from the screen, the extracted ink on a transparent preview, the tuning sliders, and the detected pen colour.">
+</p>
+<p align="center"><sub>Lifting from the screen on Windows. The lettering is an AI-generated sample
+made for this demo.</sub></p>
 
 It also lives in the system tray: lift from the screen or a file, switch the
 output, copy the last result again, reopen the window, or quit. On Windows,
