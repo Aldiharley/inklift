@@ -263,7 +263,7 @@ export (Ctrl+Z undoes a stroke).
 
 <p align="center">
   <img src="design/assets/readme-lift-from-screen-windows.jpg" width="880"
-       alt="The inklift desktop app on Windows, beside a photo viewer showing calligraphy on paper. The app shows the region it lifted from the screen, the extracted ink on a transparent preview, the tuning sliders, and the detected pen colour.">
+       alt="The inklift desktop app on Windows, beside a photo viewer showing calligraphy on paper. The app shows the region it lifted from the screen, the extracted ink on a transparent preview, the ink colour swatches, the tuning sliders, and the Clean up section with the eraser and its size and softness.">
 </p>
 <p align="center"><sub>Lifting from the screen on Windows. The lettering is an AI-generated sample
 made for this demo.</sub></p>
