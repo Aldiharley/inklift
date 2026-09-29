@@ -1572,7 +1572,7 @@ dependencies = [
 
 [[package]]
 name = "inklift-cli"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "arboard",
  "image",
@@ -1582,11 +1582,11 @@ dependencies = [
 
 [[package]]
 name = "inklift-core"
-version = "0.1.1"
+version = "0.1.2"
 
 [[package]]
 name = "inklift-gui"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "base64 0.22.1",
  "image",
@@ -1603,7 +1603,7 @@ dependencies = [
 
 [[package]]
 name = "inklift-shot"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "arboard",
  "inklift-core",
