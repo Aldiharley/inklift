@@ -416,3 +416,72 @@ fn every_required_extraction_param_is_sent_by_the_ui() {
     }
     assert!(missing.is_empty(), "Params requires fields the UI never sends: {missing:?}");
 }
+
+/// Inline style attributes are silently dropped in the shipped webview.
+///
+/// The CSP allows `'unsafe-inline'` styles, but Tauri adds hashes for the
+/// page's own `<style>` block, and a browser ignores `'unsafe-inline'` once a
+/// hash is present. So a `style="…"` attribute, or one set with
+/// `setAttribute("style", …)`, never applies. Measured in the running app over
+/// WebView2 DevTools: every ink swatch computed `rgb(240, 240, 240)` instead of
+/// its colour, and both `display:flex` button rows computed `display:block`.
+/// Styles set through the CSSOM (`el.style.width = …`) are not affected.
+#[test]
+fn the_ui_uses_no_inline_style_attributes() {
+    let ui = gui_dir().join("ui");
+    let mut hits = Vec::new();
+    for entry in fs::read_dir(&ui).expect("ui/ must exist").filter_map(Result::ok) {
+        let path = entry.path();
+        let name = path.file_name().unwrap().to_string_lossy().into_owned();
+        let Ok(body) = fs::read_to_string(&path) else { continue };
+        let needles: &[&str] = match path.extension().and_then(|x| x.to_str()) {
+            Some("html") => &[" style=\""],
+            Some("js") => &["setAttribute(\"style\"", "setAttribute('style'"],
+            _ => continue,
+        };
+        for (i, line) in body.lines().enumerate() {
+            if needles.iter().any(|n| line.contains(n)) {
+                hits.push(format!("{name}:{}", i + 1));
+            }
+        }
+    }
+    assert!(
+        hits.is_empty(),
+        "inline style attributes never apply under the app's CSP; use a class in the \
+         stylesheet instead: {hits:?}"
+    );
+}
+
+/// Each ink swatch must get its colour from the stylesheet, or it renders as a
+/// blank button and the user cannot tell the choices apart.
+#[test]
+fn every_ink_swatch_is_coloured_by_a_stylesheet_class() {
+    let html = fs::read_to_string(gui_dir().join("ui/index.html")).expect("index.html");
+    let css = html
+        .split("<style>")
+        .nth(1)
+        .and_then(|s| s.split("</style>").next())
+        .expect("index.html must have a <style> block");
+    let swatches = html
+        .split("id=\"inkSw\"")
+        .nth(1)
+        .and_then(|s| s.split("</div>").next())
+        .expect("index.html must have the #inkSw swatches");
+
+    let mut uncoloured = Vec::new();
+    for button in swatches.split("<button").skip(1) {
+        let class = button
+            .split("class=\"")
+            .nth(1)
+            .and_then(|s| s.split('"').next())
+            .unwrap_or("");
+        let coloured = class
+            .split_whitespace()
+            .filter(|c| *c != "sw")
+            .any(|c| css.contains(&format!(".sw.{c}{{background")));
+        if !coloured {
+            uncoloured.push(button.split('>').next().unwrap_or(button).trim().to_string());
+        }
+    }
+    assert!(uncoloured.is_empty(), "swatches with no colour rule in the stylesheet: {uncoloured:?}");
+}

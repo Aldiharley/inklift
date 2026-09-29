@@ -253,12 +253,13 @@ parameter rescaled to match, radii by `s` and areas by `s²` — then refine at
 full resolution.
 
 It gives you sliders for pickup (Sauvola `k`), speck removal and thickest
-stroke; a light-on-dark toggle; ink swatches; four preview grounds — void,
-white, black and ink — for checking the alpha channel against something other
-than the colour you cut it from; hold-to-compare against the source; Save /
-Copy; and an eraser with adjustable size and softness for the stray marks no
-slider should have to fix, which holds through retuning and export (Ctrl+Z
-undoes a stroke).
+stroke; a light-on-dark toggle; ink swatches — the pen as written, black,
+white, Prussian blue or iron gall, the app's face of `--ink`; four preview
+grounds — void, white, black and ink — for checking the alpha channel against
+something other than the colour you cut it from; hold-to-compare against the
+source; Save / Copy; and an eraser with adjustable size and softness for the
+stray marks no slider should have to fix, which holds through retuning and
+export (Ctrl+Z undoes a stroke).
 
 <p align="center">
   <img src="design/assets/readme-lift-from-screen-windows.jpg" width="880"
@@ -438,8 +439,8 @@ app a wiring job rather than a port.
 ## Build and test
 
 ```bash
-cargo test                                 # 179 tests
-cargo test --features inklift-cli/shot     # 202 tests
+cargo test                                 # 207 tests
+cargo test --features inklift-cli/shot     # 230 tests
 ```
 
 No run touches the network. Counts measured on Windows 11 with rustc 1.96.0;

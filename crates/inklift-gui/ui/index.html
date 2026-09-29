@@ -153,6 +153,12 @@ input[type=range]:disabled{opacity:.45;cursor:default}
 .sw[aria-pressed="true"]{box-shadow:0 0 0 2px var(--accent),0 0 0 3.5px var(--bg-content)}
 .sw:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
 .sw.auto{background:conic-gradient(from 210deg,#1E266B,#8B5E34,#1E266B)}
+/* colours live here, never in inline style attributes: under the app's CSP those
+   are dropped, and the swatches rendered as four identical grey buttons */
+.sw.black{background:#111} .sw.white{background:#fff}
+.sw.prussian{background:#2B6486} .sw.gall{background:#8B5E34}
+/* a row of buttons; this was an inline style, which the CSP also dropped */
+.actions{display:flex;gap:8px}
 
 .banner{display:flex;gap:9px;align-items:flex-start;padding:9px 11px;border-radius:10px;font-size:12px;line-height:1.45;
   background:color-mix(in oklab,var(--ochre) 14%,transparent);
@@ -174,6 +180,10 @@ input[type=range]:disabled{opacity:.45;cursor:default}
                    repeating-linear-gradient(-45deg,var(--void-b) 0 1px,transparent 1px 6px)}
 .gsw.white{background:#FFFDFA}
 .gsw.both{background:linear-gradient(90deg,var(--void-bg) 0 50%,#FFFDFA 50% 100%)}
+/* app.js's notice when the Tauri API is missing; a class so the CSP lets it apply */
+.noapi{position:fixed;inset:auto 16px 16px;z-index:99;margin:0;padding:14px 16px;
+  border-radius:12px;font:13px/1.5 system-ui,sans-serif;
+  background:#3A1518;color:#FFDCDC;box-shadow:0 0 0 1px rgba(255,120,120,.35)}
 .toast{position:fixed;right:16px;bottom:16px;padding:10px 13px;border-radius:11px;font-size:12.5px;
   background:var(--bg-content);color:var(--text);box-shadow:0 0 0 1px var(--rule),0 10px 26px -8px rgba(20,18,16,.4);
   opacity:0;transform:translateY(6px);transition:opacity 160ms,transform 160ms var(--ease);pointer-events:none}
@@ -238,10 +248,10 @@ input[type=range]:disabled{opacity:.45;cursor:default}
         <div class="shead">Ink</div>
         <div class="swatches" id="inkSw">
           <button class="sw auto" data-ink="" aria-pressed="true" title="As written"></button>
-          <button class="sw" data-ink="black" style="background:#111" aria-pressed="false" title="Black"></button>
-          <button class="sw" data-ink="white" style="background:#fff" aria-pressed="false" title="White"></button>
-          <button class="sw" data-ink="#2B6486" style="background:#2B6486" aria-pressed="false" title="Prussian"></button>
-          <button class="sw" data-ink="#8B5E34" style="background:#8B5E34" aria-pressed="false" title="Iron gall"></button>
+          <button class="sw black" data-ink="black" aria-pressed="false" title="Black"></button>
+          <button class="sw white" data-ink="white" aria-pressed="false" title="White"></button>
+          <button class="sw prussian" data-ink="#2B6486" aria-pressed="false" title="Prussian"></button>
+          <button class="sw gall" data-ink="#8B5E34" aria-pressed="false" title="Iron gall"></button>
         </div>
       </div>
 
@@ -282,7 +292,7 @@ input[type=range]:disabled{opacity:.45;cursor:default}
         <div class="ends"><span>Crisp edge</span><span>Feathered</span></div>
       </div>
 
-      <div style="display:flex;gap:8px">
+      <div class="actions">
         <button class="btn ghost" id="undoBtn" disabled title="Undo the last stroke (Ctrl+Z)"><img class="ico" src="icons/undo.png" alt="" aria-hidden="true">Undo</button>
         <button class="btn ghost" id="clearBtn" disabled><img class="ico" src="icons/clear.png" alt="" aria-hidden="true">Clear erasing</button>
       </div>
@@ -296,7 +306,7 @@ input[type=range]:disabled{opacity:.45;cursor:default}
       <button aria-pressed="true"  data-v="alpha"><span class="gsw void"></span>Transparent</button>
       <button aria-pressed="false" data-v="white"><span class="gsw white"></span>On white</button>
     </div>
-    <div style="display:flex;gap:8px">
+    <div class="actions">
       <button class="btn ghost"  id="saveBtn" disabled><img class="ico" src="icons/save.png" alt="" aria-hidden="true">Save…</button>
       <button class="btn primary" id="copyBtn" disabled><img class="ico" src="icons/copy.png" alt="" aria-hidden="true">Copy</button>
     </div>

@@ -16,10 +16,9 @@ if (!window.__TAURI__ || !window.__TAURI__.core) {
     p.textContent =
       "inklift cannot reach its backend: the Tauri API was not injected into " +
       "this window. The app needs withGlobalTauri enabled in tauri.conf.json.";
-    p.setAttribute("style",
-      "position:fixed;inset:auto 16px 16px;z-index:99;margin:0;padding:14px 16px;" +
-      "border-radius:12px;font:13px/1.5 system-ui,sans-serif;" +
-      "background:#3A1518;color:#FFDCDC;box-shadow:0 0 0 1px rgba(255,120,120,.35)");
+    // Styled by a class in index.html: a style attribute set here would be
+    // dropped by the CSP, leaving the one warning that matters unstyled.
+    p.className = "noapi";
     document.body.append(p);
   });
   throw new Error("inklift: window.__TAURI__ missing — is withGlobalTauri on?");
